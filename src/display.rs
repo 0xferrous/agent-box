@@ -34,7 +34,8 @@ pub fn display_git_worktrees(bare_repo_path: &Path) -> Result<()> {
 
 /// Display JJ workspace information for current repository
 pub fn display_jj_workspace_info(config: &Config, repo_path: &Path) -> Result<()> {
-    let jj_workspace_path = calculate_bare_repo_path(&config.base_repo_dir, repo_path, &config.jj_dir)?;
+    let jj_workspace_path =
+        calculate_bare_repo_path(&config.base_repo_dir, repo_path, &config.jj_dir)?;
 
     println!("\n=== JJ Workspace ===\n");
     println!("JJ workspace path:   {}", jj_workspace_path.display());
@@ -53,7 +54,10 @@ pub fn display_all_jj_workspaces(config: &Config) -> Result<()> {
     println!("\n=== All JJ Workspaces ===\n");
 
     if !config.jj_dir.exists() {
-        println!("  JJ workspaces directory does not exist: {}", config.jj_dir.display());
+        println!(
+            "  JJ workspaces directory does not exist: {}",
+            config.jj_dir.display()
+        );
         return Ok(());
     }
 
@@ -88,7 +92,8 @@ pub fn display_current_repo_info(config: &Config) -> Result<()> {
     let repo_path = get_repo_path(&repo);
     println!("Current repo path:   {}", repo_path.display());
 
-    let bare_repo_path = calculate_bare_repo_path(&config.base_repo_dir, &repo_path, &config.git_dir)?;
+    let bare_repo_path =
+        calculate_bare_repo_path(&config.base_repo_dir, &repo_path, &config.git_dir)?;
     println!("Bare repo location:  {}", bare_repo_path.display());
 
     if bare_repo_path.exists() {

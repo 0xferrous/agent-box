@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::path::{calculate_bare_repo_path, calculate_relative_path, path_to_str};
+use crate::path::{
+    RepoIdentifier, WorkspaceType, calculate_bare_repo_path, calculate_relative_path, path_to_str,
+};
 
 /// RAII guard for temporary directory that automatically cleans up on drop
 struct TempDir {
@@ -28,7 +30,11 @@ impl Drop for TempDir {
     fn drop(&mut self) {
         if self.path.exists() {
             if let Err(e) = fs::remove_dir_all(&self.path) {
-                eprintln!("Warning: Failed to clean up temporary directory {}: {}", self.path.display(), e);
+                eprintln!(
+                    "Warning: Failed to clean up temporary directory {}: {}",
+                    self.path.display(),
+                    e
+                );
             }
         }
     }
@@ -77,10 +83,14 @@ pub fn discover_repo_with_umask() -> Result<gix::Repository> {
     // This gives: directories 0775 (rwxrwxr-x), files 0664 (rw-rw-r--)
     umask(Mode::from_bits_truncate(0o002));
 
-    let current_dir = std::env::current_dir()
-        .wrap_err("Failed to get current working directory")?;
-    let repo = gix::discover(&current_dir)
-        .wrap_err_with(|| format!("Failed to discover git repository in {}", current_dir.display()))?;
+    let current_dir =
+        std::env::current_dir().wrap_err("Failed to get current working directory")?;
+    let repo = gix::discover(&current_dir).wrap_err_with(|| {
+        format!(
+            "Failed to discover git repository in {}",
+            current_dir.display()
+        )
+    })?;
     Ok(repo)
 }
 
@@ -239,7 +249,10 @@ pub fn convert_to_worktree(config: &Config) -> Result<()> {
     let temp_dir_path = std::env::temp_dir().join(format!("ab-worktree-{}", std::process::id()));
     let temp_dir = TempDir::new(temp_dir_path)?;
 
-    println!("Creating temporary worktree at: {}", temp_dir.path().display());
+    println!(
+        "Creating temporary worktree at: {}",
+        temp_dir.path().display()
+    );
 
     // Create worktree at temp location
     let output = std::process::Command::new("git")
@@ -388,11 +401,9 @@ fn find_and_select_bare_repo(config: &Config, repo_name: Option<&str>) -> Result
     // Prompt for repo name if not provided
     let name = match repo_name {
         Some(n) => n.to_string(),
-        None => {
-            inquire::Text::new("Repository name:")
-                .with_help_message("Enter the name of the repository to create a workspace for")
-                .prompt()?
-        }
+        None => inquire::Text::new("Repository name:")
+            .with_help_message("Enter the name of the repository to create a workspace for")
+            .prompt()?,
     };
 
     // Search for matching repos
@@ -403,15 +414,15 @@ fn find_and_select_bare_repo(config: &Config, repo_name: Option<&str>) -> Result
         1 => Ok(matches[0].clone()),
         _ => {
             // Multiple matches - prompt user to select
-            let options: Vec<String> = matches.iter()
-                .map(|p| p.display().to_string())
-                .collect();
+            let options: Vec<String> = matches.iter().map(|p| p.display().to_string()).collect();
 
-            let selection = inquire::Select::new("Multiple repositories found. Select one:", options)
-                .prompt()?;
+            let selection =
+                inquire::Select::new("Multiple repositories found. Select one:", options)
+                    .prompt()?;
 
             // Find the selected path
-            matches.iter()
+            matches
+                .iter()
                 .find(|p| p.display().to_string() == selection)
                 .cloned()
                 .ok_or_eyre("Failed to find selected repository")
@@ -480,7 +491,11 @@ fn verify_jj_repo_exists(jj_repo_path: &Path) -> Result<()> {
 }
 
 /// Create a new jj workspace at the specified path
-fn create_jj_workspace_at_path(workspace_path: &Path, jj_repo_path: &Path, session: &str) -> Result<()> {
+fn create_jj_workspace_at_path(
+    workspace_path: &Path,
+    jj_repo_path: &Path,
+    session: &str,
+) -> Result<()> {
     println!("Creating JJ workspace:");
     println!("  JJ repo: {}", jj_repo_path.display());
     println!("  Workspace path: {}", workspace_path.display());
