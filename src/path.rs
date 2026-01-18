@@ -42,6 +42,17 @@ pub fn path_to_str(path: &Path) -> Result<&str> {
         .ok_or_else(|| eyre!("Path contains invalid UTF-8: {}", path.display()))
 }
 
+/// Calculate relative path from base directory to full path
+pub fn calculate_relative_path(base_dir: &Path, full_path: &Path) -> Result<PathBuf> {
+    full_path.strip_prefix(base_dir)
+        .map(|p| p.to_path_buf())
+        .map_err(|_| eyre!(
+            "Path {} is not under base directory {}",
+            full_path.display(),
+            base_dir.display()
+        ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

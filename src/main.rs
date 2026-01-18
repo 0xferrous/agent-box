@@ -7,7 +7,7 @@ mod repo;
 
 use config::load_config_or_exit;
 use display::info;
-use repo::{convert_to_worktree, export_repo, init_jj};
+use repo::{convert_to_worktree, export_repo, init_jj, new_workspace};
 
 #[derive(Parser)]
 #[command(name = "ab")]
@@ -31,6 +31,14 @@ enum Commands {
     ConvertToWorktree,
     /// Show repository information and list workspaces
     Info,
+    /// Create a new jj workspace for an existing repository
+    New {
+        /// Repository name to search for
+        repo_name: Option<String>,
+        /// Session/workspace name
+        #[arg(long, short)]
+        session: Option<String>,
+    },
 }
 
 fn main() {
@@ -59,6 +67,12 @@ fn main() {
         Commands::Info => {
             if let Err(e) = info(&config) {
                 eprintln!("Error getting repository info: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::New { repo_name, session } => {
+            if let Err(e) = new_workspace(&config, repo_name.as_deref(), session.as_deref()) {
+                eprintln!("Error creating new workspace: {}", e);
                 std::process::exit(1);
             }
         }

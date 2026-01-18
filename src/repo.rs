@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::path::{calculate_bare_repo_path, path_to_str};
+use crate::path::{calculate_bare_repo_path, calculate_relative_path, path_to_str};
 
 /// RAII guard for temporary directory that automatically cleans up on drop
 struct TempDir {
@@ -300,6 +300,228 @@ pub fn convert_to_worktree(config: &Config) -> Result<()> {
     println!("\nSuccessfully converted to worktree!");
     println!("  Worktree location: {}", repo_path.display());
     println!("  Backed by bare repo: {}", bare_repo_path.display());
+
+    Ok(())
+}
+
+/// Create a new jj workspace for an existing bare repository
+pub fn new_workspace(
+    config: &Config,
+    repo_name: Option<&str>,
+    session_name: Option<&str>,
+) -> Result<()> {
+    // Set umask early
+    umask(Mode::from_bits_truncate(0o002));
+
+    // Step 1: Search for bare repos and get selection
+    let bare_repo_path = find_and_select_bare_repo(config, repo_name)?;
+
+    // Step 2: Get session name
+    let session = get_session_name(session_name)?;
+
+    // Step 3: Calculate paths
+    let relative_path = calculate_relative_path(&config.git_dir, &bare_repo_path)?;
+    let jj_repo_path = config.jj_dir.join(&relative_path);
+    let workspace_path = config
+        .workspace_dir
+        .join("jj")
+        .join(&relative_path)
+        .join(&session);
+
+    println!("\nPaths calculated:");
+    println!("  Bare repo: {}", bare_repo_path.display());
+    println!("  JJ repo: {}", jj_repo_path.display());
+    println!("  New workspace: {}", workspace_path.display());
+
+    // Step 4: Verify jj repo exists
+    verify_jj_repo_exists(&jj_repo_path)?;
+
+    // Step 5: Create workspace
+    create_jj_workspace_at_path(&workspace_path, &jj_repo_path, &session)?;
+
+    println!(
+        "\nSuccessfully created workspace at: {}",
+        workspace_path.display()
+    );
+    Ok(())
+}
+
+/// Recursively search for bare repositories by directory name
+fn find_bare_repos_by_name(git_dir: &Path, search_name: &str) -> Result<Vec<PathBuf>> {
+    let mut matches = Vec::new();
+
+    fn visit_dirs(dir: &Path, search_name: &str, matches: &mut Vec<PathBuf>) -> Result<()> {
+        if !dir.is_dir() {
+            return Ok(());
+        }
+
+        // Check if current directory is a bare git repo
+        if dir.join("HEAD").exists() && dir.join("refs").exists() {
+            // Match on directory name only (not full path)
+            if let Some(dir_name) = dir.file_name() {
+                if dir_name.to_string_lossy() == search_name {
+                    matches.push(dir.to_path_buf());
+                }
+            }
+            // Don't recurse into git repos
+            return Ok(());
+        }
+
+        // Recurse into subdirectories
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dirs(&path, search_name, matches)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    visit_dirs(git_dir, search_name, &mut matches)?;
+    Ok(matches)
+}
+
+/// Find and select a bare repository
+fn find_and_select_bare_repo(config: &Config, repo_name: Option<&str>) -> Result<PathBuf> {
+    // Prompt for repo name if not provided
+    let name = match repo_name {
+        Some(n) => n.to_string(),
+        None => {
+            inquire::Text::new("Repository name:")
+                .with_help_message("Enter the name of the repository to create a workspace for")
+                .prompt()?
+        }
+    };
+
+    // Search for matching repos
+    let matches = find_bare_repos_by_name(&config.git_dir, &name)?;
+
+    match matches.len() {
+        0 => bail!("No repository found with name '{}'", name),
+        1 => Ok(matches[0].clone()),
+        _ => {
+            // Multiple matches - prompt user to select
+            let options: Vec<String> = matches.iter()
+                .map(|p| p.display().to_string())
+                .collect();
+
+            let selection = inquire::Select::new("Multiple repositories found. Select one:", options)
+                .prompt()?;
+
+            // Find the selected path
+            matches.iter()
+                .find(|p| p.display().to_string() == selection)
+                .cloned()
+                .ok_or_eyre("Failed to find selected repository")
+        }
+    }
+}
+
+/// Get session name from argument or prompt
+fn get_session_name(session_name: Option<&str>) -> Result<String> {
+    match session_name {
+        Some(name) => {
+            let trimmed = name.trim();
+            if trimmed.contains(char::is_whitespace) {
+                bail!("Session name cannot contain whitespace: '{}'", name);
+            }
+            if trimmed.is_empty() {
+                bail!("Session name cannot be empty");
+            }
+            Ok(trimmed.to_string())
+        }
+        None => {
+            let validator = |input: &str| {
+                let trimmed = input.trim();
+                if trimmed.is_empty() {
+                    return Ok(inquire::validator::Validation::Invalid(
+                        "Session name cannot be empty".into(),
+                    ));
+                }
+                if trimmed.contains(char::is_whitespace) {
+                    return Ok(inquire::validator::Validation::Invalid(
+                        "Session name cannot contain spaces".into(),
+                    ));
+                }
+                Ok(inquire::validator::Validation::Valid)
+            };
+
+            let name = inquire::Text::new("Session name:")
+                .with_help_message("Enter a name for this workspace session (no spaces)")
+                .with_validator(validator)
+                .prompt()
+                .map_err(|e| eyre::eyre!("Failed to get session name: {}", e))?;
+
+            Ok(name.trim().to_string())
+        }
+    }
+}
+
+/// Verify that a jj repository exists at the given path
+fn verify_jj_repo_exists(jj_repo_path: &Path) -> Result<()> {
+    if !jj_repo_path.exists() {
+        bail!(
+            "JJ repository does not exist at: {}\nPlease run 'ab init-jj' first.",
+            jj_repo_path.display()
+        );
+    }
+
+    let jj_dir = jj_repo_path.join(".jj");
+    if !jj_dir.exists() {
+        bail!(
+            "Directory exists but is not a JJ repository: {}\nMissing .jj directory",
+            jj_repo_path.display()
+        );
+    }
+
+    Ok(())
+}
+
+/// Create a new jj workspace at the specified path
+fn create_jj_workspace_at_path(workspace_path: &Path, jj_repo_path: &Path, session: &str) -> Result<()> {
+    println!("Creating JJ workspace:");
+    println!("  JJ repo: {}", jj_repo_path.display());
+    println!("  Workspace path: {}", workspace_path.display());
+    println!("  Session name: {}", session);
+
+    // Setup directory with setgid bit
+    setup_directory_with_setgid(workspace_path)?;
+
+    // Create workspace directory
+    fs::create_dir_all(workspace_path)?;
+
+    // Load the existing jj workspace to get the repo
+    let config = jj_lib::config::StackedConfig::with_defaults();
+    let user_settings = jj_lib::settings::UserSettings::from_config(config)?;
+    let store_factories = jj_lib::repo::StoreFactories::default();
+    let working_copy_factories = jj_lib::workspace::default_working_copy_factories();
+
+    let existing_workspace = jj_lib::workspace::Workspace::load(
+        &user_settings,
+        jj_repo_path,
+        &store_factories,
+        &working_copy_factories,
+    )?;
+
+    // Create workspace name
+    let workspace_name = jj_lib::ref_name::WorkspaceNameBuf::from(session);
+
+    // Get the repo directory path (.jj directory)
+    let repo_path = existing_workspace.repo_path();
+
+    // Load the repo at head
+    let repo = existing_workspace.repo_loader().load_at_head()?;
+
+    // Initialize new workspace with existing repo
+    let (_new_workspace, _repo) = jj_lib::workspace::Workspace::init_workspace_with_existing_repo(
+        workspace_path,
+        repo_path,
+        &repo,
+        &*jj_lib::workspace::default_working_copy_factory(),
+        workspace_name,
+    )?;
 
     Ok(())
 }
