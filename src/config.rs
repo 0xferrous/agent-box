@@ -13,6 +13,15 @@ pub struct AgentConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DockerConfig {
+    pub image: String,
+    #[serde(default)]
+    pub entrypoint: Option<Vec<String>>,
+    #[serde(default)]
+    pub context_dirs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
     pub git_dir: PathBuf,
     pub jj_dir: PathBuf,
@@ -20,6 +29,7 @@ pub struct Config {
     pub base_repo_dir: PathBuf,
     #[allow(dead_code)]
     pub agent: AgentConfig,
+    pub docker: DockerConfig,
 }
 
 /// Load configuration from ~/.agent-box.toml

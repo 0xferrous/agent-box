@@ -1,4 +1,5 @@
 use eyre::{Result, eyre};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
@@ -8,6 +9,15 @@ use crate::config::Config;
 pub enum WorkspaceType {
     Git,
     Jj,
+}
+
+/// Information about a git worktree
+#[derive(Debug, Clone)]
+pub struct GitWorktreeInfo {
+    pub path: PathBuf,
+    pub id: Option<String>,
+    pub is_main: bool,
+    pub is_locked: bool,
 }
 
 /// A relative path identifier for a repository that can be resolved
@@ -121,9 +131,142 @@ impl RepoIdentifier {
             .join(session)
     }
 
+    pub fn workspace_path(&self, config: &Config, wtype: WorkspaceType, session: &str) -> PathBuf {
+        match wtype {
+            WorkspaceType::Git => self.git_workspace_path(config, session),
+            WorkspaceType::Jj => self.jj_workspace_path(config, session),
+        }
+    }
+
+    /// Get the base directory containing all JJ workspaces for this repo
+    pub fn jj_workspace_dir(&self, config: &Config) -> PathBuf {
+        config.jj_dir.join(&self.relative_path)
+    }
+
+    /// Get the base directory containing all git worktrees for this repo
+    pub fn git_worktree_dir(&self, config: &Config) -> PathBuf {
+        config.workspace_dir.join("git").join(&self.relative_path)
+    }
+
     /// Get the underlying relative path
     pub fn relative_path(&self) -> &Path {
         &self.relative_path
+    }
+
+    /// Try to locate a repository identifier by walking the git_dir and matching against a path-like string.
+    /// The search string can be a partial path like "fr/agent-box" or "agent-box".
+    /// Returns the first matching RepoIdentifier, or None if no match is found.
+    pub fn locate(config: &Config, search: &str) -> Result<Option<Self>> {
+        let search_path = Path::new(search);
+
+        if !config.git_dir.exists() {
+            return Ok(None);
+        }
+
+        // Walk the git_dir to find all bare repos
+        for entry in walkdir::WalkDir::new(&config.git_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+
+            // Check if this looks like a git bare repo (has HEAD and refs/)
+            if !path.is_dir() || !path.join("HEAD").exists() || !path.join("refs").is_dir() {
+                continue;
+            }
+
+            // Get the relative path from git_dir
+            let Ok(relative_path) = path.strip_prefix(&config.git_dir) else {
+                continue;
+            };
+
+            // Check if this matches the search string
+            // Match if the relative path ends with the search path or equals it
+            if relative_path == search_path || relative_path.ends_with(search_path) {
+                return Ok(Some(Self {
+                    relative_path: relative_path.to_path_buf(),
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Get all JJ workspaces for this repository using JJ's workspace tracking
+    pub fn jj_workspaces(&self, config: &Config) -> Result<Vec<String>> {
+        let workspace_path = self.jj_path(config);
+
+        if !workspace_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        if !workspace_path.join(".jj").exists() {
+            return Ok(Vec::new());
+        }
+
+        // Load the workspace to access the repo
+        let jj_config = jj_lib::config::StackedConfig::with_defaults();
+        let user_settings = jj_lib::settings::UserSettings::from_config(jj_config)?;
+        let store_factories = jj_lib::repo::StoreFactories::default();
+        let working_copy_factories = jj_lib::workspace::default_working_copy_factories();
+
+        let workspace = jj_lib::workspace::Workspace::load(
+            &user_settings,
+            &workspace_path,
+            &store_factories,
+            &working_copy_factories,
+        )?;
+
+        let repo = workspace.repo_loader().load_at_head()?;
+
+        // Get workspace names from the View's wc_commit_ids
+        let workspace_names: Vec<String> = repo
+            .view()
+            .wc_commit_ids()
+            .keys()
+            .map(|name| name.as_str().to_owned())
+            .collect();
+
+        Ok(workspace_names)
+    }
+
+    /// Get all git worktrees for this repository
+    pub fn git_worktrees(&self, config: &Config) -> Result<Vec<GitWorktreeInfo>> {
+        let bare_repo_path = self.git_path(config);
+
+        if !bare_repo_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let bare_repo = gix::open(&bare_repo_path)?;
+        let mut worktrees = Vec::new();
+
+        // Add main worktree if it exists
+        if let Some(wt) = bare_repo.worktree() {
+            worktrees.push(GitWorktreeInfo {
+                path: wt.base().to_path_buf(),
+                id: None,
+                is_main: true,
+                is_locked: false,
+            });
+        }
+
+        // Add all linked worktrees
+        for proxy in bare_repo.worktrees()? {
+            let path = proxy.base()?;
+            let id = proxy.id().to_string();
+            let is_locked = proxy.is_locked();
+
+            worktrees.push(GitWorktreeInfo {
+                path,
+                id: Some(id),
+                is_main: false,
+                is_locked,
+            });
+        }
+
+        Ok(worktrees)
     }
 }
 
@@ -143,24 +286,6 @@ pub fn expand_path(path: &Path) -> Result<PathBuf> {
     expanded
         .canonicalize()
         .wrap_err_with(|| format!("Failed to canonicalize path: {}", expanded.display()))
-}
-
-/// Calculate bare repo path from base_repo_dir and git_dir
-pub fn calculate_bare_repo_path(
-    base_repo_dir: &Path,
-    current_repo_path: &Path,
-    git_dir: &Path,
-) -> Result<PathBuf> {
-    let relative_path = current_repo_path.strip_prefix(base_repo_dir).map_err(|_| {
-        eyre!(
-            "Repository {} is not under base_repo_dir {}",
-            current_repo_path.display(),
-            base_repo_dir.display()
-        )
-    })?;
-
-    let target_path = git_dir.join(relative_path);
-    Ok(target_path)
 }
 
 /// Convert Path to str with a descriptive error message
@@ -188,7 +313,7 @@ mod tests {
     use super::*;
 
     fn make_test_config() -> Config {
-        use crate::config::AgentConfig;
+        use crate::config::{AgentConfig, DockerConfig};
 
         Config {
             base_repo_dir: PathBuf::from("/home/user/repos"),
@@ -198,6 +323,11 @@ mod tests {
             agent: AgentConfig {
                 user: "testuser".to_string(),
                 group: "testgroup".to_string(),
+            },
+            docker: DockerConfig {
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                context_dirs: vec![],
             },
         }
     }
@@ -323,35 +453,128 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_bare_repo_path_simple() {
-        let base = PathBuf::from("/home/user/repos");
-        let current = PathBuf::from("/home/user/repos/myproject");
-        let git_dir = PathBuf::from("/mnt/git-storage");
+    fn test_locate_exact_match() {
+        use crate::config::{AgentConfig, DockerConfig};
 
-        let result = calculate_bare_repo_path(&base, &current, &git_dir).unwrap();
-        assert_eq!(result, PathBuf::from("/mnt/git-storage/myproject"));
+        let temp_dir = std::env::temp_dir().join(format!("ab-test-locate-{}", std::process::id()));
+        let git_dir = temp_dir.join("git");
+
+        // Create a mock bare repo structure
+        let repo_path = git_dir.join("fr").join("agent-box");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::fs::write(repo_path.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::create_dir(repo_path.join("refs")).unwrap();
+
+        let config = Config {
+            base_repo_dir: PathBuf::from("/home/user/repos"),
+            git_dir: git_dir.clone(),
+            jj_dir: PathBuf::from("/mnt/jj"),
+            workspace_dir: PathBuf::from("/mnt/workspace"),
+            agent: AgentConfig {
+                user: "testuser".to_string(),
+                group: "testgroup".to_string(),
+            },
+            docker: DockerConfig {
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                context_dirs: vec![],
+            },
+        };
+
+        // Test exact match
+        let result = RepoIdentifier::locate(&config, "fr/agent-box").unwrap();
+        assert!(result.is_some());
+        let id = result.unwrap();
+        assert_eq!(id.relative_path(), Path::new("fr/agent-box"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
-    fn test_calculate_bare_repo_path_nested() {
-        let base = PathBuf::from("/home/user/repos");
-        let current = PathBuf::from("/home/user/repos/work/project/subdir");
-        let git_dir = PathBuf::from("/mnt/git-storage");
+    fn test_locate_partial_match() {
+        use crate::config::{AgentConfig, DockerConfig};
 
-        let result = calculate_bare_repo_path(&base, &current, &git_dir).unwrap();
-        assert_eq!(
-            result,
-            PathBuf::from("/mnt/git-storage/work/project/subdir")
-        );
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab-test-locate-partial-{}", std::process::id()));
+        let git_dir = temp_dir.join("git");
+
+        // Create a mock bare repo structure
+        let repo_path = git_dir.join("fr").join("agent-box");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::fs::write(repo_path.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::create_dir(repo_path.join("refs")).unwrap();
+
+        let config = Config {
+            base_repo_dir: PathBuf::from("/home/user/repos"),
+            git_dir: git_dir.clone(),
+            jj_dir: PathBuf::from("/mnt/jj"),
+            workspace_dir: PathBuf::from("/mnt/workspace"),
+            agent: AgentConfig {
+                user: "testuser".to_string(),
+                group: "testgroup".to_string(),
+            },
+            docker: DockerConfig {
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                context_dirs: vec![],
+            },
+        };
+
+        // Test partial match (searching for "agent-box" should match "fr/agent-box")
+        let result = RepoIdentifier::locate(&config, "agent-box").unwrap();
+        assert!(result.is_some());
+        let id = result.unwrap();
+        assert_eq!(id.relative_path(), Path::new("fr/agent-box"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
-    fn test_calculate_bare_repo_path_not_under_base() {
-        let base = PathBuf::from("/home/user/repos");
-        let current = PathBuf::from("/somewhere/else/project");
-        let git_dir = PathBuf::from("/mnt/git-storage");
+    fn test_locate_no_match() {
+        use crate::config::{AgentConfig, DockerConfig};
 
-        let result = calculate_bare_repo_path(&base, &current, &git_dir);
-        assert!(result.is_err());
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab-test-locate-nomatch-{}", std::process::id()));
+        let git_dir = temp_dir.join("git");
+
+        // Create a mock bare repo structure
+        let repo_path = git_dir.join("fr").join("agent-box");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::fs::write(repo_path.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::create_dir(repo_path.join("refs")).unwrap();
+
+        let config = Config {
+            base_repo_dir: PathBuf::from("/home/user/repos"),
+            git_dir: git_dir.clone(),
+            jj_dir: PathBuf::from("/mnt/jj"),
+            workspace_dir: PathBuf::from("/mnt/workspace"),
+            agent: AgentConfig {
+                user: "testuser".to_string(),
+                group: "testgroup".to_string(),
+            },
+            docker: DockerConfig {
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                context_dirs: vec![],
+            },
+        };
+
+        // Test no match
+        let result = RepoIdentifier::locate(&config, "nonexistent").unwrap();
+        assert!(result.is_none());
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_locate_git_dir_not_exists() {
+        let config = make_test_config();
+
+        // Test when git_dir doesn't exist
+        let result = RepoIdentifier::locate(&config, "anything").unwrap();
+        assert!(result.is_none());
     }
 }

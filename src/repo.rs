@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::config::Config;
 use crate::path::{
-    RepoIdentifier, WorkspaceType, calculate_bare_repo_path, calculate_relative_path, path_to_str,
+    RepoIdentifier, calculate_relative_path, path_to_str,
 };
 
 /// RAII guard for temporary directory that automatically cleans up on drop
@@ -128,7 +128,8 @@ pub fn export_repo(config: &Config, no_convert: bool) -> Result<()> {
     // Get the work tree path (or git dir for bare repos)
     let repo_path = get_repo_path(&repo);
 
-    let target_path = calculate_bare_repo_path(&config.base_repo_dir, &repo_path, &config.git_dir)?;
+    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
+    let target_path = repo_id.git_path(config);
 
     println!("Exporting repository:");
     println!("  Source: {}", repo_path.display());
@@ -176,13 +177,9 @@ pub fn init_jj(config: &Config) -> Result<()> {
     // Get the work tree path (or git dir for bare repos)
     let repo_path = get_repo_path(&repo);
 
-    // Calculate bare repo path (same as export)
-    let bare_repo_path =
-        calculate_bare_repo_path(&config.base_repo_dir, &repo_path, &config.git_dir)?;
-
-    // Calculate jj workspace path using same relative path but with jj_dir as base
-    let jj_workspace_path =
-        calculate_bare_repo_path(&config.base_repo_dir, &repo_path, &config.jj_dir)?;
+    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
+    let bare_repo_path = repo_id.git_path(config);
+    let jj_workspace_path = repo_id.jj_path(config);
 
     println!("Initializing jj workspace:");
     println!("  Git bare repo: {}", bare_repo_path.display());
@@ -221,9 +218,8 @@ pub fn convert_to_worktree(config: &Config) -> Result<()> {
         .ok_or_eyre("Cannot convert a bare repository to worktree")?
         .to_path_buf();
 
-    // Calculate bare repo path
-    let bare_repo_path =
-        calculate_bare_repo_path(&config.base_repo_dir, &repo_path, &config.git_dir)?;
+    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
+    let bare_repo_path = repo_id.git_path(config);
 
     if !bare_repo_path.exists() {
         bail!(
@@ -537,6 +533,115 @@ fn create_jj_workspace_at_path(
         &*jj_lib::workspace::default_working_copy_factory(),
         workspace_name,
     )?;
+
+    Ok(())
+}
+
+/// Create a new git worktree for an existing bare repository
+pub fn new_git_worktree(
+    config: &Config,
+    repo_name: Option<&str>,
+    session_name: Option<&str>,
+) -> Result<()> {
+    // Set umask early
+    umask(Mode::from_bits_truncate(0o002));
+
+    // Step 1: Search for bare repos and get selection
+    let bare_repo_path = find_and_select_bare_repo(config, repo_name)?;
+
+    // Step 2: Get session name (which will also be the branch name)
+    let session = get_session_name(session_name)?;
+
+    // Step 3: Calculate paths
+    let relative_path = calculate_relative_path(&config.git_dir, &bare_repo_path)?;
+    let workspace_path = config
+        .workspace_dir
+        .join("git")
+        .join(&relative_path)
+        .join(&session);
+
+    println!("\nPaths calculated:");
+    println!("  Bare repo: {}", bare_repo_path.display());
+    println!("  New worktree: {}", workspace_path.display());
+    println!("  Branch: {}", session);
+
+    // Step 4: Verify bare repo exists
+    if !bare_repo_path.exists() {
+        bail!(
+            "Bare repository does not exist at: {}",
+            bare_repo_path.display()
+        );
+    }
+
+    // Step 5: Create worktree with branch name matching session
+    create_git_worktree_at_path(&workspace_path, &bare_repo_path, &session)?;
+
+    println!(
+        "\nSuccessfully created git worktree at: {}",
+        workspace_path.display()
+    );
+    Ok(())
+}
+
+/// Create a new git worktree at the specified path
+fn create_git_worktree_at_path(
+    workspace_path: &Path,
+    bare_repo_path: &Path,
+    branch: &str,
+) -> Result<()> {
+    println!("Creating git worktree:");
+    println!("  Bare repo: {}", bare_repo_path.display());
+    println!("  Worktree path: {}", workspace_path.display());
+    println!("  Branch: {}", branch);
+
+    // Setup directory with setgid bit
+    setup_directory_with_setgid(workspace_path)?;
+
+    // Check if branch exists
+    let check_output = std::process::Command::new("git")
+        .args(&[
+            "--git-dir",
+            path_to_str(bare_repo_path)?,
+            "rev-parse",
+            "--verify",
+            &format!("refs/heads/{}", branch),
+        ])
+        .output()?;
+
+    let branch_exists = check_output.status.success();
+
+    // Create worktree using git worktree add
+    let mut args = vec![
+        "--git-dir",
+        path_to_str(bare_repo_path)?,
+        "worktree",
+        "add",
+    ];
+
+    // If branch doesn't exist, create it with -b flag
+    if !branch_exists {
+        args.push("-b");
+        args.push(branch);
+        args.push(path_to_str(workspace_path)?);
+        println!("  Creating new branch: {}", branch);
+    } else {
+        args.push(path_to_str(workspace_path)?);
+        args.push(branch);
+        println!("  Using existing branch: {}", branch);
+    }
+
+    let output = std::process::Command::new("git")
+        .args(&args)
+        .output()?;
+
+    if !output.status.success() {
+        bail!(
+            "Failed to create git worktree: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    println!("  Git worktree created successfully");
 
     Ok(())
 }

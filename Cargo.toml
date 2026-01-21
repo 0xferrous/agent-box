@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.5.54", features = ["derive"] }
 gix = { version = "0.77.0", features = ["blocking-network-client", "status"] }
-nix = { version = "0.30.1", features = ["fs"] }
+nix = { version = "0.30.1", features = ["fs", "user"] }
 # for compatibility with gitoxide
 prodash = { version = "30.0.1", features = [
   "render-line",
@@ -21,3 +21,8 @@ toml = "0.9"
 jj-lib = { version = "0.37.0", features = ["git"] }
 eyre = "0.6.12"
 inquire = "0.7"
+bollard = "0.20.0"
+tokio = { version = "1.49.0", features = ["full"] }
+futures-util = "0.3"
+termion = "4.0"
+walkdir = "2.5"

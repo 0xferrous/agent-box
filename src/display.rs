@@ -1,32 +1,29 @@
 use eyre::Result;
-use std::fs;
 use std::path::Path;
 
 use crate::config::Config;
-use crate::path::calculate_bare_repo_path;
+use crate::path::RepoIdentifier;
 use crate::repo::get_repo_path;
 
-/// Display git worktrees for a bare repository
-pub fn display_git_worktrees(bare_repo_path: &Path) -> Result<()> {
+/// Display git worktrees for a repository
+pub fn display_git_worktrees(repo_id: &RepoIdentifier, config: &Config) -> Result<()> {
     println!("\n=== Git Worktrees ===\n");
 
-    let bare_repo = gix::open(bare_repo_path)?;
+    let worktrees = repo_id.git_worktrees(config)?;
 
-    // List main worktree if it exists
-    if let Some(wt) = bare_repo.worktree() {
-        println!("{} (main)", wt.base().display());
-    }
-
-    // List all linked worktrees
-    let worktrees = bare_repo.worktrees()?;
-    if worktrees.is_empty() && bare_repo.worktree().is_none() {
+    if worktrees.is_empty() {
         println!("  (No worktrees found)");
+        return Ok(());
     }
 
-    for proxy in worktrees {
-        let base = proxy.base()?;
-        let locked = if proxy.is_locked() { " [locked]" } else { "" };
-        println!("{} [{}]{}", base.display(), proxy.id(), locked);
+    for worktree in worktrees {
+        if worktree.is_main {
+            println!("{} (main)", worktree.path.display());
+        } else {
+            let locked = if worktree.is_locked { " [locked]" } else { "" };
+            let id = worktree.id.as_deref().unwrap_or("unknown");
+            println!("{} [{}]{}", worktree.path.display(), id, locked);
+        }
     }
 
     Ok(())
@@ -34,8 +31,8 @@ pub fn display_git_worktrees(bare_repo_path: &Path) -> Result<()> {
 
 /// Display JJ workspace information for current repository
 pub fn display_jj_workspace_info(config: &Config, repo_path: &Path) -> Result<()> {
-    let jj_workspace_path =
-        calculate_bare_repo_path(&config.base_repo_dir, repo_path, &config.jj_dir)?;
+    let repo_id = RepoIdentifier::from_repo_path(config, repo_path)?;
+    let jj_workspace_path = repo_id.jj_path(config);
 
     println!("\n=== JJ Workspace ===\n");
     println!("JJ workspace path:   {}", jj_workspace_path.display());
@@ -49,29 +46,20 @@ pub fn display_jj_workspace_info(config: &Config, repo_path: &Path) -> Result<()
     Ok(())
 }
 
-/// Display all JJ workspaces found in the jj_dir
-pub fn display_all_jj_workspaces(config: &Config) -> Result<()> {
+/// Display all JJ workspaces for a specific repository
+pub fn display_all_jj_workspaces(config: &Config, repo_path: &Path) -> Result<()> {
     println!("\n=== All JJ Workspaces ===\n");
 
-    if !config.jj_dir.exists() {
-        println!(
-            "  JJ workspaces directory does not exist: {}",
-            config.jj_dir.display()
-        );
+    let repo_id = RepoIdentifier::from_repo_path(config, repo_path)?;
+    let workspace_names = repo_id.jj_workspaces(config)?;
+
+    if workspace_names.is_empty() {
+        println!("  (No JJ workspaces found)");
         return Ok(());
     }
 
-    let mut found_workspaces = false;
-    for entry in fs::read_dir(&config.jj_dir)?.flatten() {
-        let path = entry.path();
-        if path.is_dir() && path.join(".jj").exists() {
-            println!("  {}", path.display());
-            found_workspaces = true;
-        }
-    }
-
-    if !found_workspaces {
-        println!("  (No JJ workspaces found)");
+    for workspace_name in workspace_names {
+        println!("  {}", workspace_name);
     }
 
     Ok(())
@@ -92,12 +80,12 @@ pub fn display_current_repo_info(config: &Config) -> Result<()> {
     let repo_path = get_repo_path(&repo);
     println!("Current repo path:   {}", repo_path.display());
 
-    let bare_repo_path =
-        calculate_bare_repo_path(&config.base_repo_dir, &repo_path, &config.git_dir)?;
+    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
+    let bare_repo_path = repo_id.git_path(config);
     println!("Bare repo location:  {}", bare_repo_path.display());
 
     if bare_repo_path.exists() {
-        if let Err(e) = display_git_worktrees(&bare_repo_path) {
+        if let Err(e) = display_git_worktrees(&repo_id, config) {
             eprintln!("  Error displaying git worktrees: {}", e);
         }
     } else {
@@ -106,6 +94,10 @@ pub fn display_current_repo_info(config: &Config) -> Result<()> {
 
     if let Err(e) = display_jj_workspace_info(config, &repo_path) {
         eprintln!("\nCould not display JJ workspace info: {}", e);
+    }
+
+    if let Err(e) = display_all_jj_workspaces(config, &repo_path) {
+        eprintln!("\nCould not display JJ workspaces: {}", e);
     }
 
     Ok(())
@@ -120,7 +112,6 @@ pub fn info(config: &Config) -> Result<()> {
     println!("Base repo dir:       {}", config.base_repo_dir.display());
 
     display_current_repo_info(config)?;
-    display_all_jj_workspaces(config)?;
 
     Ok(())
 }
