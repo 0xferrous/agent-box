@@ -1,5 +1,5 @@
 use eyre::{OptionExt, Result, bail};
-use nix::sys::stat::{Mode, stat, umask};
+use nix::sys::stat::{Mode, stat};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -49,6 +49,31 @@ pub fn get_repo_path(repo: &gix::Repository) -> PathBuf {
     }
 }
 
+/// Configure a git repository for shared group access
+/// Sets core.sharedRepository = group to ensure proper permissions on all git files
+fn configure_shared_repository(repo_path: &Path) -> Result<()> {
+    use std::io::Write;
+
+    // Directly append to the config file
+    // This is simpler than trying to parse and manipulate with gix config API
+    let config_path = repo_path.join("config");
+
+    // Read existing config to check if sharedRepository already exists
+    let existing = fs::read_to_string(&config_path)?;
+
+    if !existing.contains("sharedRepository") {
+        // Append the setting to the config file
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(&config_path)?;
+
+        writeln!(file, "[core]")?;
+        writeln!(file, "\tsharedRepository = group")?;
+    }
+
+    Ok(())
+}
+
 /// Set up directory with setgid bit
 pub fn setup_directory_with_setgid(dir_path: &Path) -> Result<()> {
     if let Some(parent) = dir_path.parent() {
@@ -75,13 +100,9 @@ pub fn setup_directory_with_setgid(dir_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Discover repository with umask setup
-pub fn discover_repo_with_umask() -> Result<gix::Repository> {
+/// Discover repository in current directory
+pub fn discover_repo() -> Result<gix::Repository> {
     use eyre::Context;
-
-    // Set umask to 0002 so user and group have same permissions, others read-only
-    // This gives: directories 0775 (rwxrwxr-x), files 0664 (rw-rw-r--)
-    umask(Mode::from_bits_truncate(0o002));
 
     let current_dir =
         std::env::current_dir().wrap_err("Failed to get current working directory")?;
@@ -96,7 +117,7 @@ pub fn discover_repo_with_umask() -> Result<gix::Repository> {
 
 /// Export git repository to bare repo
 pub fn export_repo(config: &Config, no_convert: bool) -> Result<()> {
-    let repo = discover_repo_with_umask()?;
+    let repo = discover_repo()?;
 
     // Check for uncommitted changes (only if not bare)
     if repo.workdir().is_some() {
@@ -156,6 +177,10 @@ pub fn export_repo(config: &Config, no_convert: bool) -> Result<()> {
     // Shutdown renderer
     drop(render_handle);
 
+    // Configure the bare repository for shared group access
+    // This ensures pack files and other git objects get proper group permissions
+    configure_shared_repository(&target_path)?;
+
     println!("\nSuccessfully exported to: {}", target_path.display());
 
     // Convert to worktree and init jj by default unless --no-convert is specified
@@ -172,7 +197,7 @@ pub fn export_repo(config: &Config, no_convert: bool) -> Result<()> {
 
 /// Initialize jj workspace backed by git bare repo
 pub fn init_jj(config: &Config) -> Result<()> {
-    let repo = discover_repo_with_umask()?;
+    let repo = discover_repo()?;
 
     // Get the work tree path (or git dir for bare repos)
     let repo_path = get_repo_path(&repo);
@@ -210,7 +235,7 @@ pub fn init_jj(config: &Config) -> Result<()> {
 
 /// Convert current repo to worktree of bare repo
 pub fn convert_to_worktree(config: &Config) -> Result<()> {
-    let repo = discover_repo_with_umask()?;
+    let repo = discover_repo()?;
 
     // Get the work tree path (error if bare repo)
     let repo_path = repo
@@ -319,9 +344,6 @@ pub fn new_workspace(
     repo_name: Option<&str>,
     session_name: Option<&str>,
 ) -> Result<()> {
-    // Set umask early
-    umask(Mode::from_bits_truncate(0o002));
-
     // Step 1: Search for bare repos and get selection
     let bare_repo_path = find_and_select_bare_repo(config, repo_name)?;
 
@@ -543,9 +565,6 @@ pub fn new_git_worktree(
     repo_name: Option<&str>,
     session_name: Option<&str>,
 ) -> Result<()> {
-    // Set umask early
-    umask(Mode::from_bits_truncate(0o002));
-
     // Step 1: Search for bare repos and get selection
     let bare_repo_path = find_and_select_bare_repo(config, repo_name)?;
 
@@ -642,6 +661,50 @@ fn create_git_worktree_at_path(
     }
 
     println!("  Git worktree created successfully");
+
+    Ok(())
+}
+
+/// Remove all workspaces and repositories for a given repo ID
+pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> Result<()> {
+    let paths_to_remove = vec![
+        ("Git bare repo", repo_id.git_path(config)),
+        ("JJ workspace", repo_id.jj_path(config)),
+        ("Git worktrees", config.workspace_dir.join("git").join(repo_id.relative_path())),
+        ("JJ workspaces", config.workspace_dir.join("jj").join(repo_id.relative_path())),
+    ];
+
+    println!("Repository: {}", repo_id.relative_path().display());
+    println!("\nThe following directories will be removed:");
+
+    let mut found_any = false;
+    for (label, path) in &paths_to_remove {
+        if path.exists() {
+            found_any = true;
+            println!("  [{}] {}", label, path.display());
+        }
+    }
+
+    if !found_any {
+        println!("  (none - no directories found)");
+        return Ok(());
+    }
+
+    if dry_run {
+        println!("\n[DRY RUN] No files were actually deleted.");
+        return Ok(());
+    }
+
+    // Remove all existing directories
+    for (label, path) in &paths_to_remove {
+        if path.exists() {
+            println!("\nRemoving {}: {}", label, path.display());
+            fs::remove_dir_all(path)?;
+            println!("  ✓ Removed");
+        }
+    }
+
+    println!("\n✓ All workspaces and repositories removed successfully");
 
     Ok(())
 }

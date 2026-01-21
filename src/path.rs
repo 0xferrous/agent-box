@@ -327,7 +327,7 @@ mod tests {
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,
-                context_dirs: vec![],
+                mounts: Default::default(),
             },
         }
     }
@@ -477,7 +477,7 @@ mod tests {
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,
-                context_dirs: vec![],
+                mounts: Default::default(),
             },
         };
 
@@ -517,7 +517,7 @@ mod tests {
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,
-                context_dirs: vec![],
+                mounts: Default::default(),
             },
         };
 
@@ -557,7 +557,7 @@ mod tests {
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,
-                context_dirs: vec![],
+                mounts: Default::default(),
             },
         };
 

@@ -12,13 +12,29 @@ pub struct AgentConfig {
     pub group: String,
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct MountPaths {
+    #[serde(default)]
+    pub absolute: Vec<String>,
+    #[serde(default)]
+    pub home_relative: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct MountsConfig {
+    #[serde(default)]
+    pub ro: MountPaths,
+    #[serde(default)]
+    pub rw: MountPaths,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DockerConfig {
     pub image: String,
     #[serde(default)]
     pub entrypoint: Option<Vec<String>>,
     #[serde(default)]
-    pub context_dirs: Vec<String>,
+    pub mounts: MountsConfig,
 }
 
 #[derive(Debug, Deserialize)]
