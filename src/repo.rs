@@ -302,8 +302,8 @@ pub fn init_jj(config: &Config) -> Result<()> {
     fs::create_dir_all(&jj_workspace_path)?;
 
     // Initialize jj workspace with external git repo
-    let config = jj_lib::config::StackedConfig::with_defaults();
-    let user_settings = jj_lib::settings::UserSettings::from_config(config)?;
+    let config_jj = jj_lib::config::StackedConfig::with_defaults();
+    let user_settings = jj_lib::settings::UserSettings::from_config(config_jj)?;
 
     let (_workspace, _repo) = jj_lib::workspace::Workspace::init_external_git(
         &user_settings,
@@ -608,39 +608,26 @@ fn create_jj_workspace_at_path(
     // Setup directory with setgid bit
     setup_directory_with_setgid(workspace_path)?;
 
-    // Create workspace directory
-    fs::create_dir_all(workspace_path)?;
+    // Use jj workspace add command to create a new workspace
+    let output = std::process::Command::new("jj")
+        .current_dir(jj_repo_path)
+        .args(&[
+            "workspace",
+            "add",
+            "--name",
+            session,
+            path_to_str(workspace_path)?,
+        ])
+        .output()?;
 
-    // Load the existing jj workspace to get the repo
-    let config = jj_lib::config::StackedConfig::with_defaults();
-    let user_settings = jj_lib::settings::UserSettings::from_config(config)?;
-    let store_factories = jj_lib::repo::StoreFactories::default();
-    let working_copy_factories = jj_lib::workspace::default_working_copy_factories();
+    if !output.status.success() {
+        bail!(
+            "Failed to create jj workspace: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
-    let existing_workspace = jj_lib::workspace::Workspace::load(
-        &user_settings,
-        jj_repo_path,
-        &store_factories,
-        &working_copy_factories,
-    )?;
-
-    // Create workspace name
-    let workspace_name = jj_lib::ref_name::WorkspaceNameBuf::from(session);
-
-    // Get the repo directory path (.jj directory)
-    let repo_path = existing_workspace.repo_path();
-
-    // Load the repo at head
-    let repo = existing_workspace.repo_loader().load_at_head()?;
-
-    // Initialize new workspace with existing repo
-    let (_new_workspace, _repo) = jj_lib::workspace::Workspace::init_workspace_with_existing_repo(
-        workspace_path,
-        repo_path,
-        &repo,
-        &*jj_lib::workspace::default_working_copy_factory(),
-        workspace_name,
-    )?;
+    println!("  ✓ JJ workspace created successfully");
 
     Ok(())
 }
