@@ -96,6 +96,98 @@ pub fn setup_directory_with_setgid(dir_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Initialize directory structure with correct permissions and group ownership
+pub fn init_dirs(config: &Config) -> Result<()> {
+    use nix::unistd::{Group, chown};
+    use std::os::unix::ffi::OsStrExt;
+
+    // Get the group ID from the group name
+    let group = Group::from_name(&config.agent.group)?
+        .ok_or_eyre(format!("Group '{}' not found", config.agent.group))?;
+    let target_gid = group.gid;
+
+    println!(
+        "Target group: {} (gid: {})\n",
+        config.agent.group, target_gid
+    );
+
+    // Create paths that need to live long enough
+    let git_workspace_dir = config.workspace_dir.join("git");
+    let jj_workspace_dir = config.workspace_dir.join("jj");
+
+    // Directories to create
+    let dirs = vec![
+        ("Git directory", &config.git_dir),
+        ("JJ directory", &config.jj_dir),
+        ("Git workspace directory", &git_workspace_dir),
+        ("JJ workspace directory", &jj_workspace_dir),
+    ];
+
+    println!("Initializing directory structure...\n");
+
+    for (label, dir_path) in dirs {
+        println!("{}: {}", label, dir_path.display());
+
+        let existed = dir_path.exists();
+
+        if existed {
+            println!("  Already exists");
+        } else {
+            // Create the directory
+            fs::create_dir_all(dir_path)?;
+            println!("  Created");
+        }
+
+        // Check current group ownership
+        let file_stat = stat(dir_path)?;
+        let current_gid = nix::unistd::Gid::from_raw(file_stat.st_gid);
+
+        // Get current group name
+        let current_group_name = Group::from_gid(current_gid)?
+            .map(|g| g.name)
+            .unwrap_or_else(|| format!("gid:{}", current_gid));
+
+        println!(
+            "  Current group: {} (gid: {})",
+            current_group_name, current_gid
+        );
+
+        // Set group ownership if different
+        if current_gid != target_gid {
+            chown(dir_path.as_os_str().as_bytes(), None, Some(target_gid))?;
+            println!(
+                "  Changed group: {} -> {}",
+                current_group_name, config.agent.group
+            );
+        } else {
+            println!("  Group ownership correct");
+        }
+
+        // Set setgid bit
+        let current_mode = Mode::from_bits_truncate(file_stat.st_mode);
+
+        if !current_mode.contains(Mode::S_ISGID) {
+            let new_mode = current_mode | Mode::S_ISGID;
+            let permissions = fs::Permissions::from_mode(new_mode.bits());
+            fs::set_permissions(dir_path, permissions)?;
+
+            println!(
+                "  Set setgid bit: {:o} -> {:o}",
+                current_mode.bits(),
+                new_mode.bits()
+            );
+        } else {
+            println!("  Setgid bit already set");
+        }
+
+        println!("  ✓ Configured\n");
+    }
+
+    println!("✓ Directory initialization complete!");
+
+    Ok(())
+}
+
 /// Discover repository in current directory
 pub fn discover_repo() -> Result<gix::Repository> {
     use eyre::Context;

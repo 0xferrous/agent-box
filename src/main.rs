@@ -10,8 +10,8 @@ use config::load_config_or_exit;
 use display::info;
 use docker::spawn_container;
 use repo::{
-    clean_repos, convert_to_worktree, export_repo, init_jj, list_repos, new_git_worktree,
-    new_workspace, remove_repo,
+    clean_repos, convert_to_worktree, export_repo, init_dirs, init_jj, list_repos,
+    new_git_worktree, new_workspace, remove_repo,
 };
 
 use crate::path::WorkspaceType;
@@ -81,6 +81,8 @@ enum Commands {
     },
     /// Interactively clean repositories and their artifacts
     Clean,
+    /// Initialize directory structure with correct permissions
+    Init,
 }
 
 fn main() {
@@ -241,6 +243,12 @@ fn main() {
         Commands::Clean => {
             if let Err(e) = clean_repos(&config) {
                 eprintln!("Error cleaning repositories: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Init => {
+            if let Err(e) = init_dirs(&config) {
+                eprintln!("Error initializing directories: {}", e);
                 std::process::exit(1);
             }
         }

@@ -423,7 +423,7 @@ impl RepoIdentifier {
     }
 }
 
-/// Expand path with ~ support and canonicalize
+/// Expand path with ~ support and canonicalize if it exists
 pub fn expand_path(path: &Path) -> Result<PathBuf> {
     use eyre::Context;
 
@@ -435,10 +435,22 @@ pub fn expand_path(path: &Path) -> Result<PathBuf> {
         path.to_owned()
     };
 
-    // Canonicalize to get absolute path and resolve symlinks
-    expanded
-        .canonicalize()
-        .wrap_err_with(|| format!("Failed to canonicalize path: {}", expanded.display()))
+    // Canonicalize to get absolute path and resolve symlinks if path exists
+    // Otherwise just return the expanded path (useful for init command)
+    if expanded.exists() {
+        expanded
+            .canonicalize()
+            .wrap_err_with(|| format!("Failed to canonicalize path: {}", expanded.display()))
+    } else {
+        // For non-existent paths, make absolute if relative
+        if expanded.is_relative() {
+            let current_dir =
+                std::env::current_dir().wrap_err("Failed to get current directory")?;
+            Ok(current_dir.join(expanded))
+        } else {
+            Ok(expanded)
+        }
+    }
 }
 
 /// Convert Path to str with a descriptive error message
