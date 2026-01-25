@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::config::Config;
 
 /// Type of workspace (git or jj)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WorkspaceType {
     Git,
     Jj,
@@ -20,9 +20,103 @@ pub struct GitWorktreeInfo {
     pub is_locked: bool,
 }
 
+/// Represents a workspace with its repository identifier, type, and session name
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Workspace {
+    pub repo_id: RepoIdentifier,
+    pub workspace_type: WorkspaceType,
+    pub session: String,
+}
+
+impl Workspace {
+    /// Helper function to discover workspaces in a directory based on a filter predicate
+    fn discover_workspaces_in_dir<F>(
+        base_dir: &Path,
+        workspace_type: WorkspaceType,
+        is_workspace: F,
+    ) -> Result<Vec<Self>>
+    where
+        F: Fn(&Path) -> bool,
+    {
+        let mut workspaces = Vec::new();
+
+        if !base_dir.exists() {
+            return Ok(workspaces);
+        }
+
+        // Walk the directory to find all workspaces matching the predicate
+        for entry in walkdir::WalkDir::new(base_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+
+            if !path.is_dir() || !is_workspace(path) {
+                continue;
+            }
+
+            // Parse the path: base_dir/{repo_path}/{session}
+            let Ok(relative) = path.strip_prefix(base_dir) else {
+                continue;
+            };
+
+            // Split into components
+            let components: Vec<_> = relative.components().collect();
+            if components.is_empty() {
+                continue;
+            }
+
+            // Last component is the session name
+            let Some(session) = components
+                .last()
+                .and_then(|c| c.as_os_str().to_str())
+                .map(|s| s.to_string())
+            else {
+                continue;
+            };
+
+            // Everything before the last component is the repo path
+            let repo_path: PathBuf = components[..components.len() - 1].iter().collect();
+
+            if repo_path.as_os_str().is_empty() {
+                continue;
+            }
+
+            workspaces.push(Workspace {
+                repo_id: RepoIdentifier {
+                    relative_path: repo_path,
+                },
+                workspace_type,
+                session,
+            });
+        }
+
+        Ok(workspaces)
+    }
+
+    /// Discover all git worktree workspaces in workspace_dir/git
+    pub fn discover_workspaces_git(config: &Config) -> Result<Vec<Self>> {
+        let git_workspace_dir = config.workspace_dir.join("git");
+        Self::discover_workspaces_in_dir(&git_workspace_dir, WorkspaceType::Git, |path| {
+            // Check if this is a git worktree (has .git file)
+            path.join(".git").exists()
+        })
+    }
+
+    /// Discover all JJ workspaces in workspace_dir/jj
+    pub fn discover_workspaces_jj(config: &Config) -> Result<Vec<Self>> {
+        let jj_workspace_dir = config.workspace_dir.join("jj");
+        Self::discover_workspaces_in_dir(&jj_workspace_dir, WorkspaceType::Jj, |path| {
+            // Check if this is a jj workspace (has .jj/working_copy directory)
+            path.join(".jj").join("working_copy").exists()
+        })
+    }
+}
+
 /// A relative path identifier for a repository that can be resolved
 /// against different base directories (git_dir, jj_dir, workspace_dir, etc.)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RepoIdentifier {
     /// The relative path from any base directory (e.g., "myproject" or "work/project")
     relative_path: PathBuf,
@@ -191,6 +285,65 @@ impl RepoIdentifier {
         }
 
         Ok(None)
+    }
+
+    /// Helper function to discover repositories in a directory based on a filter predicate
+    fn discover_repos_in_dir<F>(base_dir: &Path, is_repo: F) -> Result<Vec<Self>>
+    where
+        F: Fn(&Path) -> bool,
+    {
+        let mut repos = Vec::new();
+
+        if !base_dir.exists() {
+            return Ok(repos);
+        }
+
+        // Walk the directory to find all repos matching the predicate
+        for entry in walkdir::WalkDir::new(base_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+
+            if !path.is_dir() || !is_repo(path) {
+                continue;
+            }
+
+            // Get the relative path from base_dir
+            let Ok(relative_path) = path.strip_prefix(base_dir) else {
+                continue;
+            };
+
+            repos.push(Self {
+                relative_path: relative_path.to_path_buf(),
+            });
+        }
+
+        Ok(repos)
+    }
+
+    /// Discover all git repositories in the git_dir.
+    /// Returns a vector of RepoIdentifiers for all bare git repositories found.
+    pub fn discover_git_repo_ids(config: &Config) -> Result<Vec<Self>> {
+        Self::discover_repos_in_dir(&config.git_dir, |path| {
+            // Check if this looks like a git bare repo:
+            // - Has HEAD, refs/, and objects/
+            // - Does NOT have commondir (which indicates a worktree)
+            path.join("HEAD").exists()
+                && path.join("refs").is_dir()
+                && path.join("objects").is_dir()
+                && !path.join("commondir").exists()
+        })
+    }
+
+    /// Discover all JJ repositories in the jj_dir.
+    /// Returns a vector of RepoIdentifiers for all JJ repositories found.
+    pub fn discover_jj_repo_ids(config: &Config) -> Result<Vec<Self>> {
+        Self::discover_repos_in_dir(&config.jj_dir, |path| {
+            // Check if this looks like a JJ repo (has .jj directory)
+            path.join(".jj").is_dir()
+        })
     }
 
     /// Get all JJ workspaces for this repository using JJ's workspace tracking

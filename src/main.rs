@@ -9,7 +9,7 @@ mod repo;
 use config::load_config_or_exit;
 use display::info;
 use docker::spawn_container;
-use repo::{convert_to_worktree, export_repo, init_jj, new_workspace, new_git_worktree, remove_repo};
+use repo::{convert_to_worktree, export_repo, init_jj, new_workspace, new_git_worktree, remove_repo, list_repos, clean_repos};
 
 use crate::path::WorkspaceType;
 
@@ -35,6 +35,8 @@ enum Commands {
     ConvertToWorktree,
     /// Show repository information and list workspaces
     Info,
+    /// List all repositories and show which ones have git/jj repos
+    Ls,
     /// Create a new workspace (jj or git worktree) for an existing repository
     New {
         /// Repository name to search for
@@ -74,6 +76,8 @@ enum Commands {
         #[arg(long, short)]
         force: bool,
     },
+    /// Interactively clean repositories and their artifacts
+    Clean,
 }
 
 fn main() {
@@ -107,6 +111,12 @@ fn main() {
         Commands::Info => {
             if let Err(e) = info(&config) {
                 eprintln!("Error getting repository info: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Ls => {
+            if let Err(e) = list_repos(&config) {
+                eprintln!("Error listing repositories: {}", e);
                 std::process::exit(1);
             }
         }
@@ -212,6 +222,12 @@ fn main() {
             // Actually remove
             if let Err(e) = remove_repo(&config, &repo_id, false) {
                 eprintln!("Error removing repository: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Clean => {
+            if let Err(e) = clean_repos(&config) {
+                eprintln!("Error cleaning repositories: {}", e);
                 std::process::exit(1);
             }
         }

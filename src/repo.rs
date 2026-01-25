@@ -708,3 +708,148 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
 
     Ok(())
 }
+
+/// Interactively clean repositories and all their artifacts
+pub fn clean_repos(config: &Config) -> Result<()> {
+    use std::collections::BTreeSet;
+
+    // Discover all git and jj repos
+    let git_repos = RepoIdentifier::discover_git_repo_ids(config)?;
+    let jj_repos = RepoIdentifier::discover_jj_repo_ids(config)?;
+
+    // Collect all unique repo identifiers
+    let all_repos: BTreeSet<_> = git_repos
+        .into_iter()
+        .chain(jj_repos.into_iter())
+        .collect();
+
+    if all_repos.is_empty() {
+        println!("No repositories found.");
+        return Ok(());
+    }
+
+    // Create options for multi-select
+    let options: Vec<String> = all_repos
+        .iter()
+        .map(|r| r.relative_path().display().to_string())
+        .collect();
+
+    // Prompt user to select repositories to delete
+    let selected = inquire::MultiSelect::new(
+        "Select repositories to delete (use Space to select, Enter to confirm):",
+        options,
+    )
+    .prompt()?;
+
+    if selected.is_empty() {
+        println!("No repositories selected. Cancelled.");
+        return Ok(());
+    }
+
+    println!("\nThe following repositories will be deleted:");
+    for repo_name in &selected {
+        println!("  - {}", repo_name);
+    }
+
+    // Final confirmation
+    let confirm = inquire::Confirm::new("Are you sure you want to delete these repositories?")
+        .with_default(false)
+        .prompt()?;
+
+    if !confirm {
+        println!("Cancelled.");
+        return Ok(());
+    }
+
+    // Delete each selected repository
+    for repo_name in selected {
+        // Find the RepoIdentifier for this repo
+        let repo_id = all_repos
+            .iter()
+            .find(|r| r.relative_path().display().to_string() == repo_name)
+            .ok_or_eyre("Failed to find repository")?;
+
+        println!("\n{}", "=".repeat(60));
+        remove_repo(config, repo_id, false)?;
+    }
+
+    println!("\n{}", "=".repeat(60));
+    println!("✓ Cleanup complete!");
+
+    Ok(())
+}
+
+/// List all repositories and show which have git/jj repos
+pub fn list_repos(config: &Config) -> Result<()> {
+    use std::collections::{BTreeSet, BTreeMap};
+    use crate::path::Workspace;
+
+    // Discover all git and jj repos
+    let git_repos = RepoIdentifier::discover_git_repo_ids(config)?;
+    let jj_repos = RepoIdentifier::discover_jj_repo_ids(config)?;
+
+    // Discover all workspaces
+    let git_workspaces = Workspace::discover_workspaces_git(config)?;
+    let jj_workspaces = Workspace::discover_workspaces_jj(config)?;
+
+    // Group workspaces by repo_id
+    let mut git_ws_map: BTreeMap<&RepoIdentifier, Vec<&str>> = BTreeMap::new();
+    for ws in &git_workspaces {
+        git_ws_map.entry(&ws.repo_id).or_default().push(&ws.session);
+    }
+
+    let mut jj_ws_map: BTreeMap<&RepoIdentifier, Vec<&str>> = BTreeMap::new();
+    for ws in &jj_workspaces {
+        jj_ws_map.entry(&ws.repo_id).or_default().push(&ws.session);
+    }
+
+    // Collect all unique repo identifiers using chain and collect
+    let all_repos: BTreeSet<_> = git_repos
+        .into_iter()
+        .chain(jj_repos.into_iter())
+        .collect();
+
+    if all_repos.is_empty() {
+        println!("No repositories found.");
+        return Ok(());
+    }
+
+    // Calculate the maximum width needed for the repository column
+    let max_width = all_repos
+        .iter()
+        .map(|r| r.relative_path().display().to_string().len())
+        .max()
+        .unwrap_or(10)
+        .max(10); // Minimum width of "Repository" header
+
+    println!("Repositories:");
+    println!("{:<width$} {:<8} {:<8} {:<30} {:<30}", "Repository", "Git", "JJ", "Git Workspaces", "JJ Workspaces", width = max_width);
+    println!("{}", "-".repeat(max_width + 78));
+
+    for repo_id in all_repos {
+        let has_git = repo_id.git_path(config).exists();
+        let has_jj = repo_id.jj_path(config).exists();
+
+        let git_sessions = git_ws_map
+            .get(&repo_id)
+            .map(|sessions| sessions.join(", "))
+            .unwrap_or_default();
+
+        let jj_sessions = jj_ws_map
+            .get(&repo_id)
+            .map(|sessions| sessions.join(", "))
+            .unwrap_or_default();
+
+        println!(
+            "{:<width$} {:<8} {:<8} {:<30} {:<30}",
+            repo_id.relative_path().display(),
+            has_git,
+            has_jj,
+            git_sessions,
+            jj_sessions,
+            width = max_width
+        );
+    }
+
+    Ok(())
+}
