@@ -9,7 +9,10 @@ mod repo;
 use config::load_config_or_exit;
 use display::info;
 use docker::spawn_container;
-use repo::{convert_to_worktree, export_repo, init_jj, new_workspace, new_git_worktree, remove_repo, list_repos, clean_repos};
+use repo::{
+    clean_repos, convert_to_worktree, export_repo, init_jj, list_repos, new_git_worktree,
+    new_workspace, remove_repo,
+};
 
 use crate::path::WorkspaceType;
 
@@ -120,9 +123,15 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::New { repo_name, session, git, jj: _ } => {
+        Commands::New {
+            repo_name,
+            session,
+            git,
+            jj: _,
+        } => {
             if git {
-                if let Err(e) = new_git_worktree(&config, repo_name.as_deref(), session.as_deref()) {
+                if let Err(e) = new_git_worktree(&config, repo_name.as_deref(), session.as_deref())
+                {
                     eprintln!("Error creating new git worktree: {}", e);
                     std::process::exit(1);
                 }
@@ -178,7 +187,11 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Remove { repo, dry_run, force } => {
+        Commands::Remove {
+            repo,
+            dry_run,
+            force,
+        } => {
             use path::RepoIdentifier;
 
             // Locate the repository identifier

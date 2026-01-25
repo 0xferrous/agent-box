@@ -58,7 +58,10 @@ pub async fn spawn_container(
             .wrap_err(format!("Failed to expand ro.absolute path: {}", dir))?;
 
         if !expanded.exists() {
-            return Err(eyre::eyre!("Read-only absolute mount does not exist: {}", dir));
+            return Err(eyre::eyre!(
+                "Read-only absolute mount does not exist: {}",
+                dir
+            ));
         }
 
         let expanded_str = pb_to_str(&expanded);
@@ -71,7 +74,10 @@ pub async fn spawn_container(
 
         let host_pathbuf = PathBuf::from(&host_path);
         if !host_pathbuf.exists() {
-            return Err(eyre::eyre!("Read-only home_relative mount does not exist: {}", dir));
+            return Err(eyre::eyre!(
+                "Read-only home_relative mount does not exist: {}",
+                dir
+            ));
         }
 
         binds.push(mount_path_custom(&host_path, &container_path, "ro"));
@@ -83,7 +89,10 @@ pub async fn spawn_container(
             .wrap_err(format!("Failed to expand rw.absolute path: {}", dir))?;
 
         if !expanded.exists() {
-            return Err(eyre::eyre!("Read-write absolute mount does not exist: {}", dir));
+            return Err(eyre::eyre!(
+                "Read-write absolute mount does not exist: {}",
+                dir
+            ));
         }
 
         let expanded_str = pb_to_str(&expanded);
@@ -96,7 +105,10 @@ pub async fn spawn_container(
 
         let host_pathbuf = PathBuf::from(&host_path);
         if !host_pathbuf.exists() {
-            return Err(eyre::eyre!("Read-write home_relative mount does not exist: {}", dir));
+            return Err(eyre::eyre!(
+                "Read-write home_relative mount does not exist: {}",
+                dir
+            ));
         }
 
         binds.push(mount_path_custom(&host_path, &container_path, "rw"));
@@ -117,8 +129,15 @@ pub async fn spawn_container(
         .collect::<Vec<_>>();
 
     let git_configs = std::iter::once(("core.sharedRepository", "group"))
-        .chain(std::iter::once(("safe.directory", workspace_path_str.as_str())))
-        .chain(backing_paths_str.iter().map(|p| ("safe.directory", p.as_str())));
+        .chain(std::iter::once((
+            "safe.directory",
+            workspace_path_str.as_str(),
+        )))
+        .chain(
+            backing_paths_str
+                .iter()
+                .map(|p| ("safe.directory", p.as_str())),
+        );
 
     let git_env = build_git_config_env(git_configs);
 
@@ -234,17 +253,15 @@ fn build_git_config_env<'a>(configs: impl IntoIterator<Item = (&'a str, &'a str)
 /// Resolve a home_relative mount path
 /// Takes a host path (e.g., "~/dev/patched") and returns (host_path, container_path)
 /// where container_path is relative to the container user's home directory
-fn resolve_home_relative_mount(
-    host_path: &str,
-    container_user: &str,
-) -> Result<(String, String)> {
+fn resolve_home_relative_mount(host_path: &str, container_user: &str) -> Result<(String, String)> {
     // Expand the host path
-    let expanded_host = expand_path(&PathBuf::from(host_path))
-        .wrap_err(format!("Failed to expand home_relative path: {}", host_path))?;
+    let expanded_host = expand_path(&PathBuf::from(host_path)).wrap_err(format!(
+        "Failed to expand home_relative path: {}",
+        host_path
+    ))?;
 
     // Get the host's home directory
-    let host_home = std::env::var("HOME")
-        .wrap_err("Failed to get HOME environment variable")?;
+    let host_home = std::env::var("HOME").wrap_err("Failed to get HOME environment variable")?;
     let host_home_path = PathBuf::from(&host_home);
 
     // Get the relative path from host's home
@@ -257,13 +274,15 @@ fn resolve_home_relative_mount(
         ))?;
 
     // Construct container path
-    let container_path = PathBuf::from("/home")
-        .join(container_user)
-        .join(rel_path);
+    let container_path = PathBuf::from("/home").join(container_user).join(rel_path);
 
     // Canonicalize and convert to strings
-    let host_str = expanded_host.canonicalize()
-        .wrap_err(format!("Failed to canonicalize path: {}", expanded_host.display()))?
+    let host_str = expanded_host
+        .canonicalize()
+        .wrap_err(format!(
+            "Failed to canonicalize path: {}",
+            expanded_host.display()
+        ))?
         .to_string_lossy()
         .to_string();
     let container_str = container_path.to_string_lossy().to_string();

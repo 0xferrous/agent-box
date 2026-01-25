@@ -6,9 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::path::{
-    RepoIdentifier, calculate_relative_path, path_to_str,
-};
+use crate::path::{RepoIdentifier, calculate_relative_path, path_to_str};
 
 /// RAII guard for temporary directory that automatically cleans up on drop
 struct TempDir {
@@ -63,9 +61,7 @@ fn configure_shared_repository(repo_path: &Path) -> Result<()> {
 
     if !existing.contains("sharedRepository") {
         // Append the setting to the config file
-        let mut file = fs::OpenOptions::new()
-            .append(true)
-            .open(&config_path)?;
+        let mut file = fs::OpenOptions::new().append(true).open(&config_path)?;
 
         writeln!(file, "[core]")?;
         writeln!(file, "\tsharedRepository = group")?;
@@ -630,12 +626,7 @@ fn create_git_worktree_at_path(
     let branch_exists = check_output.status.success();
 
     // Create worktree using git worktree add
-    let mut args = vec![
-        "--git-dir",
-        path_to_str(bare_repo_path)?,
-        "worktree",
-        "add",
-    ];
+    let mut args = vec!["--git-dir", path_to_str(bare_repo_path)?, "worktree", "add"];
 
     // If branch doesn't exist, create it with -b flag
     if !branch_exists {
@@ -649,9 +640,7 @@ fn create_git_worktree_at_path(
         println!("  Using existing branch: {}", branch);
     }
 
-    let output = std::process::Command::new("git")
-        .args(&args)
-        .output()?;
+    let output = std::process::Command::new("git").args(&args).output()?;
 
     if !output.status.success() {
         bail!(
@@ -670,8 +659,20 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
     let paths_to_remove = vec![
         ("Git bare repo", repo_id.git_path(config)),
         ("JJ workspace", repo_id.jj_path(config)),
-        ("Git worktrees", config.workspace_dir.join("git").join(repo_id.relative_path())),
-        ("JJ workspaces", config.workspace_dir.join("jj").join(repo_id.relative_path())),
+        (
+            "Git worktrees",
+            config
+                .workspace_dir
+                .join("git")
+                .join(repo_id.relative_path()),
+        ),
+        (
+            "JJ workspaces",
+            config
+                .workspace_dir
+                .join("jj")
+                .join(repo_id.relative_path()),
+        ),
     ];
 
     println!("Repository: {}", repo_id.relative_path().display());
@@ -718,10 +719,7 @@ pub fn clean_repos(config: &Config) -> Result<()> {
     let jj_repos = RepoIdentifier::discover_jj_repo_ids(config)?;
 
     // Collect all unique repo identifiers
-    let all_repos: BTreeSet<_> = git_repos
-        .into_iter()
-        .chain(jj_repos.into_iter())
-        .collect();
+    let all_repos: BTreeSet<_> = git_repos.into_iter().chain(jj_repos.into_iter()).collect();
 
     if all_repos.is_empty() {
         println!("No repositories found.");
@@ -781,8 +779,8 @@ pub fn clean_repos(config: &Config) -> Result<()> {
 
 /// List all repositories and show which have git/jj repos
 pub fn list_repos(config: &Config) -> Result<()> {
-    use std::collections::{BTreeSet, BTreeMap};
     use crate::path::Workspace;
+    use std::collections::{BTreeMap, BTreeSet};
 
     // Discover all git and jj repos
     let git_repos = RepoIdentifier::discover_git_repo_ids(config)?;
@@ -804,10 +802,7 @@ pub fn list_repos(config: &Config) -> Result<()> {
     }
 
     // Collect all unique repo identifiers using chain and collect
-    let all_repos: BTreeSet<_> = git_repos
-        .into_iter()
-        .chain(jj_repos.into_iter())
-        .collect();
+    let all_repos: BTreeSet<_> = git_repos.into_iter().chain(jj_repos.into_iter()).collect();
 
     if all_repos.is_empty() {
         println!("No repositories found.");
@@ -823,7 +818,15 @@ pub fn list_repos(config: &Config) -> Result<()> {
         .max(10); // Minimum width of "Repository" header
 
     println!("Repositories:");
-    println!("{:<width$} {:<8} {:<8} {:<30} {:<30}", "Repository", "Git", "JJ", "Git Workspaces", "JJ Workspaces", width = max_width);
+    println!(
+        "{:<width$} {:<8} {:<8} {:<30} {:<30}",
+        "Repository",
+        "Git",
+        "JJ",
+        "Git Workspaces",
+        "JJ Workspaces",
+        width = max_width
+    );
     println!("{}", "-".repeat(max_width + 78));
 
     for repo_id in all_repos {
