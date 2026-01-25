@@ -3,7 +3,6 @@ use nix::sys::stat::{Mode, stat};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use crate::config::Config;
 use crate::path::{RepoIdentifier, calculate_relative_path, path_to_str};
@@ -247,23 +246,22 @@ pub fn export_repo(config: &Config, no_convert: bool) -> Result<()> {
     // Create parent directories if they don't exist
     setup_directory_with_setgid(&target_path)?;
 
-    // Setup progress reporting
-    let progress = prodash::tree::Root::new();
-    let sub_progress = progress.add_child("Cloning");
+    // Clone to bare repository using git CLI
+    let clone_output = std::process::Command::new("git")
+        .args(&[
+            "clone",
+            "--bare",
+            path_to_str(&repo_path)?,
+            path_to_str(&target_path)?,
+        ])
+        .output()?;
 
-    // Setup line renderer for CLI output
-    let render_handle = prodash::render::line(
-        std::io::stderr(),
-        Arc::downgrade(&progress),
-        prodash::render::line::Options::default(),
-    );
-
-    // Clone with progress - pass Path references
-    let _result = gix::prepare_clone_bare(repo_path.as_path(), target_path.as_path())?
-        .fetch_only(sub_progress, &std::sync::atomic::AtomicBool::new(false))?;
-
-    // Shutdown renderer
-    drop(render_handle);
+    if !clone_output.status.success() {
+        bail!(
+            "Failed to clone repository: {}",
+            String::from_utf8_lossy(&clone_output.stderr)
+        );
+    }
 
     // Configure the bare repository for shared group access
     // This ensures pack files and other git objects get proper group permissions
