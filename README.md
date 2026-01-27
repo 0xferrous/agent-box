@@ -13,10 +13,8 @@ cargo install --path .
 Create `~/.agent-box.toml`:
 
 ```toml
-git_dir = "~/git-repos"           # Where bare repos are stored
-jj_dir = "~/jj-workspaces"        # Where jj workspaces are stored
 workspace_dir = "~/workspaces"    # Where git worktrees and jj workspaces are created
-base_repo_dir = "~/repos"         # Base directory for your repos
+base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/git)
 
 [docker]
 image = "agent-box:latest"
@@ -148,8 +146,6 @@ ab oneoff --entrypoint /bin/zsh
 
 - **Directory Structure**:
   - `base_repo_dir`: Your source repositories (colocated jj/git repos)
-  - `git_dir`: Stores bare git repositories (for discovery/tracking)
-  - `jj_dir`: Stores JJ repositories (for discovery/tracking)
   - `workspace_dir/git/{repo_path}/{session}`: Git worktrees
   - `workspace_dir/jj/{repo_path}/{session}`: JJ workspaces
 
