@@ -494,6 +494,9 @@ fn create_jj_workspace_at_path(
     println!("  Workspace path: {}", workspace_path.display());
     println!("  Session name: {}", session);
 
+    // create the workspace dir
+    fs::create_dir_all(workspace_path)?;
+
     // Use jj workspace add command to create a new workspace
     let output = std::process::Command::new("jj")
         .current_dir(jj_repo_path)
