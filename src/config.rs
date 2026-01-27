@@ -5,13 +5,6 @@ use std::path::PathBuf;
 
 use crate::path::expand_path;
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-pub struct AgentConfig {
-    pub user: String,
-    pub group: String,
-}
-
 #[derive(Debug, Deserialize, Default)]
 pub struct MountPaths {
     #[serde(default)]
@@ -43,8 +36,6 @@ pub struct Config {
     pub jj_dir: PathBuf,
     pub workspace_dir: PathBuf,
     pub base_repo_dir: PathBuf,
-    #[allow(dead_code)]
-    pub agent: AgentConfig,
     pub docker: DockerConfig,
 }
 

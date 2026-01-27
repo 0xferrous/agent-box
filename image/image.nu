@@ -6,10 +6,11 @@ def main [] {
     print $"change cwd to ($script_dir)"
     cd $script_dir
 
-    let agent = cat ~/.agent-box.toml | from toml | get agent
-    let uid = id -u $agent.user
-    let gid = id -g $agent.group
-    $"{ uid = ($uid); gid = ($gid); uname = \"($agent.user)\"; gname = \"($agent.group)\"; }" | save -f id.nix
+    let uid = id -u
+    let uname = id -un
+    let gid = id -g
+    let gname = id -gn
+    $"{ uid = ($uid); gid = ($gid); uname = \"($uname)\"; gname = \"($gname)\"; }" | save -f id.nix
 
     cd $script_dir
     print $"building image with uid: ($uid) gid: ($gid)"

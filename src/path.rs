@@ -478,17 +478,13 @@ mod tests {
     use super::*;
 
     fn make_test_config() -> Config {
-        use crate::config::{AgentConfig, DockerConfig};
+        use crate::config::DockerConfig;
 
         Config {
             base_repo_dir: PathBuf::from("/home/user/repos"),
             git_dir: PathBuf::from("/mnt/git"),
             jj_dir: PathBuf::from("/mnt/jj"),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            agent: AgentConfig {
-                user: "testuser".to_string(),
-                group: "testgroup".to_string(),
-            },
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,
@@ -619,7 +615,7 @@ mod tests {
 
     #[test]
     fn test_locate_exact_match() {
-        use crate::config::{AgentConfig, DockerConfig};
+        use crate::config::DockerConfig;
 
         let temp_dir = std::env::temp_dir().join(format!("ab-test-locate-{}", std::process::id()));
         let git_dir = temp_dir.join("git");
@@ -635,10 +631,6 @@ mod tests {
             git_dir: git_dir.clone(),
             jj_dir: PathBuf::from("/mnt/jj"),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            agent: AgentConfig {
-                user: "testuser".to_string(),
-                group: "testgroup".to_string(),
-            },
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,
@@ -658,7 +650,7 @@ mod tests {
 
     #[test]
     fn test_locate_partial_match() {
-        use crate::config::{AgentConfig, DockerConfig};
+        use crate::config::DockerConfig;
 
         let temp_dir =
             std::env::temp_dir().join(format!("ab-test-locate-partial-{}", std::process::id()));
@@ -675,10 +667,6 @@ mod tests {
             git_dir: git_dir.clone(),
             jj_dir: PathBuf::from("/mnt/jj"),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            agent: AgentConfig {
-                user: "testuser".to_string(),
-                group: "testgroup".to_string(),
-            },
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,
@@ -698,7 +686,7 @@ mod tests {
 
     #[test]
     fn test_locate_no_match() {
-        use crate::config::{AgentConfig, DockerConfig};
+        use crate::config::DockerConfig;
 
         let temp_dir =
             std::env::temp_dir().join(format!("ab-test-locate-nomatch-{}", std::process::id()));
@@ -715,10 +703,6 @@ mod tests {
             git_dir: git_dir.clone(),
             jj_dir: PathBuf::from("/mnt/jj"),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            agent: AgentConfig {
-                user: "testuser".to_string(),
-                group: "testgroup".to_string(),
-            },
             docker: DockerConfig {
                 image: "test:latest".to_string(),
                 entrypoint: None,

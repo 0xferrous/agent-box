@@ -4,9 +4,10 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nix.url = "github:nixos/nix/2.33.1";
+    nix-ai-tools.url = "github:numtide/nix-ai-tools";
   };
 
-  outputs = { self, nixpkgs, nix }:
+  outputs = { self, nixpkgs, nix, nix-ai-tools }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forEachSystem = nixpkgs.lib.genAttrs systems;
@@ -15,11 +16,12 @@
       packages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          id = import ./id.nix;
+          id = if builtins.pathExists ./id.nix then import ./id.nix else {};
           uid = id.uid;
           gid = id.gid;
           uname = id.uname;
           gname = id.gname;
+          aiTools = nix-ai-tools.packages.${system};
 
           nixImage = pkgs.callPackage "${nix}/docker.nix" id;
 
@@ -65,6 +67,16 @@
             neovim
             jujutsu
             strace
+            gnused
+            gawk
+            diffutils
+            nodejs_24
+            python315
+            gnumake
+            lsof
+            unixtools.netstat
+
+            aiTools.pi
           ];
         in
         {

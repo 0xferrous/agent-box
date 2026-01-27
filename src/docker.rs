@@ -1,16 +1,19 @@
-use bollard::Docker;
-use bollard::models::{ContainerCreateBody, HostConfig};
 use eyre::{Context, Result};
-use futures_util::StreamExt;
 use std::path::PathBuf;
 
 use crate::config::Config;
 use crate::path::{RepoIdentifier, WorkspaceType, expand_path};
 
-use std::io::{Read, Write, stdout};
-use termion::async_stdin;
-use termion::raw::IntoRawMode;
-use tokio::io::AsyncWriteExt;
+/// Configuration for running a container
+#[derive(Debug)]
+pub struct ContainerConfig {
+    pub image: String,
+    pub entrypoint: Option<Vec<String>>,
+    pub user: String,
+    pub working_dir: String,
+    pub mounts: Vec<String>,
+    pub env: Vec<String>,
+}
 
 pub async fn spawn_container(
     config: &Config,
@@ -21,14 +24,28 @@ pub async fn spawn_container(
 ) -> Result<()> {
     let workspace_path = repo_id.workspace_path(config, wtype, session);
 
-    let docker = Docker::connect_with_defaults().wrap_err("Failed to connect to Docker daemon")?;
-
     if !workspace_path.exists() {
         return Err(eyre::eyre!(
             "Workspace path does not exist: {}",
             workspace_path.display()
         ));
     }
+
+    // Build container configuration
+    let container_config = build_container_config(config, repo_id, wtype, &workspace_path, entrypoint_override)?;
+
+    // Run the container
+    run_container(&container_config).await
+}
+
+/// Build container configuration from workspace and config
+fn build_container_config(
+    config: &Config,
+    repo_id: &RepoIdentifier,
+    wtype: WorkspaceType,
+    workspace_path: &PathBuf,
+    entrypoint_override: Option<&str>,
+) -> Result<ContainerConfig> {
 
     let pb_to_str = |pb: &PathBuf| pb.canonicalize().unwrap().to_string_lossy().to_string();
     let mount_path = |path: &str, mode: &str| format!("{path}:{path}:{mode}");
@@ -70,7 +87,7 @@ pub async fn spawn_container(
 
     // Process read-only home_relative mounts
     for dir in &config.docker.mounts.ro.home_relative {
-        let (host_path, container_path) = resolve_home_relative_mount(dir, &config.agent.user)?;
+        let (host_path, container_path) = resolve_home_relative_mount(dir)?;
 
         let host_pathbuf = PathBuf::from(&host_path);
         if !host_pathbuf.exists() {
@@ -101,7 +118,7 @@ pub async fn spawn_container(
 
     // Process read-write home_relative mounts
     for dir in &config.docker.mounts.rw.home_relative {
-        let (host_path, container_path) = resolve_home_relative_mount(dir, &config.agent.user)?;
+        let (host_path, container_path) = resolve_home_relative_mount(dir)?;
 
         let host_pathbuf = PathBuf::from(&host_path);
         if !host_pathbuf.exists() {
@@ -114,8 +131,13 @@ pub async fn spawn_container(
         binds.push(mount_path_custom(&host_path, &container_path, "rw"));
     }
 
-    let uid = get_uid(&config.agent.user)?;
-    let gid = get_gid(&config.agent.group)?;
+    let uid = nix::unistd::getuid().as_raw();
+    let gid = nix::unistd::getgid().as_raw();
+
+    // Get the current user name
+    let username = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "user".to_string());
 
     let entrypoint = entrypoint_override
         .map(|s| vec![s.to_string()])
@@ -139,97 +161,73 @@ pub async fn spawn_container(
                 .map(|p| ("safe.directory", p.as_str())),
         );
 
-    let git_env = build_git_config_env(git_configs);
+    let mut git_env = build_git_config_env(git_configs);
 
+    // Add USER and HOME environment variables to make user environment available in container
+    git_env.push(format!("USER={}", username));
+    git_env.push(format!("HOME=/home/{}", username));
+
+    Ok(ContainerConfig {
+        image: config.docker.image.clone(),
+        entrypoint,
+        user: format!("{}:{}", uid, gid),
+        working_dir: workspace_path_str,
+        mounts: binds,
+        env: git_env,
+    })
+}
+
+/// Run a container with the given configuration using Docker CLI
+async fn run_container(config: &ContainerConfig) -> Result<()> {
     eprintln!("DEBUG: Creating container with:");
-    eprintln!("  Image: {}", config.docker.image);
-    eprintln!("  Entrypoint: {:?}", entrypoint);
-    eprintln!("  User: {}:{}", uid, gid);
-    eprintln!("  Working dir: {}", workspace_path_str);
-    eprintln!("  Binds:");
-    for bind in &binds {
-        eprintln!("    {}", bind);
+    eprintln!("  Image: {}", config.image);
+    eprintln!("  Entrypoint: {:?}", config.entrypoint);
+    eprintln!("  User: {}", config.user);
+    eprintln!("  Working dir: {}", config.working_dir);
+    eprintln!("  Mounts: {} volumes", config.mounts.len());
+    eprintln!("  Env vars: {} variables", config.env.len());
+
+    let mut args = vec![
+        "run".to_string(),
+        "--rm".to_string(),
+        "-it".to_string(),
+        "--user".to_string(),
+        config.user.clone(),
+        "--workdir".to_string(),
+        config.working_dir.clone(),
+    ];
+
+    // Add mounts
+    for mount in &config.mounts {
+        args.push("-v".to_string());
+        args.push(mount.clone());
     }
-    eprintln!("  Git config:");
-    for env in &git_env {
-        eprintln!("    {}", env);
+
+    // Add environment variables
+    for env in &config.env {
+        args.push("-e".to_string());
+        args.push(env.clone());
     }
 
-    let container_config = ContainerCreateBody {
-        image: Some(config.docker.image.clone()),
-        entrypoint: entrypoint.clone(),
-        tty: Some(true),
-        attach_stdin: Some(true),
-        attach_stdout: Some(true),
-        attach_stderr: Some(true),
-        open_stdin: Some(true),
-        env: Some(git_env),
-        host_config: Some(HostConfig {
-            binds: Some(binds),
-            auto_remove: Some(true),
-            ..Default::default()
-        }),
-        user: Some(format!("{}:{}", uid, gid)),
-        working_dir: Some(workspace_path_str.clone()),
-        ..Default::default()
-    };
+    // Add entrypoint if specified
+    if let Some(entrypoint) = &config.entrypoint {
+        args.push("--entrypoint".to_string());
+        args.push(entrypoint.join(" "));
+    }
 
-    eprintln!("DEBUG: Attempting to create container...");
-    let container = docker
-        .create_container(None, container_config)
-        .await
-        .wrap_err("Failed to create container")?;
-    eprintln!("DEBUG: Container created with ID: {}", container.id);
+    // Add image
+    args.push(config.image.clone());
 
-    docker
-        .start_container(&container.id, None)
-        .await
-        .wrap_err("Failed to start container")?;
+    eprintln!("DEBUG: Running: docker {}", args.join(" "));
 
-    let bollard::container::AttachContainerResults {
-        mut output,
-        mut input,
-    } = docker
-        .attach_container(
-            &container.id,
-            Some(
-                bollard::query_parameters::AttachContainerOptionsBuilder::default()
-                    .stdout(true)
-                    .stderr(true)
-                    .stdin(true)
-                    .stream(true)
-                    .build(),
-            ),
-        )
-        .await
-        .wrap_err("Failed to attach to container")?;
+    // Execute docker run with inherited stdio
+    let status = std::process::Command::new("docker")
+        .args(&args)
+        .status()
+        .wrap_err("Failed to execute docker command")?;
 
-    // Pipe stdin into the docker attach stream input
-    tokio::task::spawn(async move {
-        #[allow(clippy::unbuffered_bytes)]
-        let mut stdin = async_stdin().bytes();
-        loop {
-            if let Some(Ok(byte)) = stdin.next() {
-                let _ = input.write_all(&[byte]).await;
-            } else {
-                tokio::time::sleep(std::time::Duration::from_nanos(10)).await;
-            }
-        }
-    });
-
-    // Set stdout in raw mode so we can do tty stuff
-    let stdout = stdout();
-    let mut stdout = stdout
-        .lock()
-        .into_raw_mode()
-        .wrap_err("Failed to set terminal to raw mode")?;
-
-    // Pipe docker attach output into stdout
-    while let Some(Ok(output)) = output.next().await {
-        stdout
-            .write_all(output.into_bytes().as_ref())
-            .wrap_err("Failed to write to stdout")?;
-        stdout.flush().wrap_err("Failed to flush stdout")?;
+    if !status.success() {
+        return Err(eyre::eyre!("Docker container exited with status: {}", status));
     }
 
     Ok(())
@@ -253,7 +251,7 @@ fn build_git_config_env<'a>(configs: impl IntoIterator<Item = (&'a str, &'a str)
 /// Resolve a home_relative mount path
 /// Takes a host path (e.g., "~/dev/patched") and returns (host_path, container_path)
 /// where container_path is relative to the container user's home directory
-fn resolve_home_relative_mount(host_path: &str, container_user: &str) -> Result<(String, String)> {
+fn resolve_home_relative_mount(host_path: &str) -> Result<(String, String)> {
     // Expand the host path
     let expanded_host = expand_path(&PathBuf::from(host_path)).wrap_err(format!(
         "Failed to expand home_relative path: {}",
@@ -263,6 +261,11 @@ fn resolve_home_relative_mount(host_path: &str, container_user: &str) -> Result<
     // Get the host's home directory
     let host_home = std::env::var("HOME").wrap_err("Failed to get HOME environment variable")?;
     let host_home_path = PathBuf::from(&host_home);
+
+    // Get the current user for container path
+    let container_user = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "user".to_string());
 
     // Get the relative path from host's home
     let rel_path = expanded_host
@@ -288,18 +291,4 @@ fn resolve_home_relative_mount(host_path: &str, container_user: &str) -> Result<
     let container_str = container_path.to_string_lossy().to_string();
 
     Ok((host_str, container_str))
-}
-
-fn get_uid(username: &str) -> Result<u32> {
-    let user = nix::unistd::User::from_name(username)
-        .wrap_err(format!("Failed to find user: {}", username))?
-        .ok_or_else(|| eyre::eyre!("User not found: {}", username))?;
-    Ok(user.uid.as_raw())
-}
-
-fn get_gid(groupname: &str) -> Result<u32> {
-    let group = nix::unistd::Group::from_name(groupname)
-        .wrap_err(format!("Failed to find group: {}", groupname))?
-        .ok_or_else(|| eyre::eyre!("Group not found: {}", groupname))?;
-    Ok(group.gid.as_raw())
 }
