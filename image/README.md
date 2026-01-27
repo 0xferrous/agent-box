@@ -1,6 +1,6 @@
 # Agent Box Docker Image
 
-Multi-layered Docker image with nix as base and customizable packages on top.
+Docker image built with Nix, using the official nix docker.nix as base with customizable packages on top.
 
 ## Quick Start
 
@@ -10,25 +10,49 @@ nix build
 docker load -i result
 ```
 
+Or use the helper script which auto-generates `id.nix` from current user:
+
+```bash
+cd image
+./image.nu
+```
+
 ## How It Works
 
-- **Multi-layered**: Uses `buildLayeredImage` - automatically creates up to 100 layers
-- **Nix included**: `pkgs.nix` gets its own layer(s)
-- **Package layers**: Each package gets its own layer for efficient caching
-- **User setup**: Configurable uid/gid (default: 1000:1000, user: agent)
+- **Nix-based**: Uses the official nix docker.nix from the nix flake
+- **User configuration**: Reads uid/gid/uname/gname from `id.nix` file
+- **Extensible packages**: Add packages via `packages` parameter (passed as `extraPkgs` to nix docker.nix)
 
 ## Default Packages
 
-Layered on top of nix base image:
-- bash, coreutils
-- git, curl, wget
-- jq, ripgrep, fd, tree
-- neovim
-- binSh, caCertificates
+The default image includes (on top of nix base):
+- **Shell & Utils**: bash
+- **Network**: curl, wget
+- **Text Processing**: jq, ripgrep, fd, tree, gnused, gawk, diffutils
+- **Editor**: neovim
+- **VCS**: jujutsu
+- **Debug**: strace, lsof, unixtools.netstat
+- **Languages**: nodejs_24, python315
+- **Build**: gnumake
+- **Security**: gnupg
+- **AI Tools**: pi, claude-code (from nix-ai-tools)
+
+## Configuration
+
+Create `id.nix` in the image directory to configure user/group:
+
+```nix
+{
+  uid = 1000;
+  gid = 1000;
+  uname = "myuser";
+  gname = "mygroup";
+}
+```
 
 ## Customizing Packages
 
-Edit `flake.nix` and modify the `defaultPackages` list (image/flake.nix:59-70):
+Edit `flake.nix` and modify the `defaultPackages` list:
 
 ```nix
 defaultPackages = with pkgs; [
@@ -42,31 +66,36 @@ defaultPackages = with pkgs; [
 
 ## Building with Custom Configuration
 
+Use the `custom` output to build with custom packages:
+
 ```bash
-nix build --impure --expr '
-  let
-    flake = builtins.getFlake (toString ./.);
-    nixpkgs = import <nixpkgs> {};
-  in
-  flake.packages.x86_64-linux.custom {
-    packages = with nixpkgs; [ python3 nodejs rustc ];
-    uid = 1000;
-    gid = 1000;
-    uname = "myuser";
-    gname = "mygroup";
+nix build .#custom --impure --expr '
+  (builtins.getFlake (toString ./.)).packages.x86_64-linux.custom {
+    packages = [ pkgs.python3 pkgs.nodejs ];
   }
 '
 ```
 
 ## Parameters
 
-- `packages` (list): Packages to add on top of nix base
-- `uid` (int): User ID (default: 1000)
-- `gid` (int): Group ID (default: 1000)
-- `uname` (string): Username (default: "agent")
-- `gname` (string): Group name (default: "agent")
+The `buildImage` function accepts:
+
+- `packages` (list): Packages to include on top of nix base
+
+User configuration is read from `id.nix`:
+- `uid` (int): User ID
+- `gid` (int): Group ID
+- `uname` (string): Username
+- `gname` (string): Group name
 
 ## Architecture Support
 
 - x86_64-linux
 - aarch64-linux
+
+## Inputs
+
+The flake uses these inputs:
+- `nixpkgs`: NixOS unstable packages
+- `nix`: Nix 2.33.1 (provides docker.nix base)
+- `nix-ai-tools`: AI tools (pi, claude-code)

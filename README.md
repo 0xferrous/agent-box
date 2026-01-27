@@ -1,6 +1,6 @@
 # Agent Box
 
-A Git repository management tool for organizing repositories with bare repos and worktrees, with optional Jujutsu integration.
+A Git/Jujutsu workspace management tool with Docker container integration.
 
 ## Installation
 
@@ -15,49 +15,25 @@ Create `~/.agent-box.toml`:
 ```toml
 git_dir = "~/git-repos"           # Where bare repos are stored
 jj_dir = "~/jj-workspaces"        # Where jj workspaces are stored
-workspace_dir = "~/workspaces"    # (currently unused)
+workspace_dir = "~/workspaces"    # Where git worktrees and jj workspaces are created
 base_repo_dir = "~/repos"         # Base directory for your repos
 
-[agent]
-user = "your-user"
-group = "your-group"
+[docker]
+image = "agent-box:latest"
+entrypoint = ["/bin/bash"]
+
+[docker.mounts.ro]
+absolute = ["/nix/store"]
+home_relative = ["~/.config/git"]
+
+[docker.mounts.rw]
+absolute = []
+home_relative = ["~/.local/share"]
 ```
 
 All paths support `~` expansion and will be canonicalized.
 
 ## Usage
-
-### Export Repository (All-in-One)
-
-Export the current repository to a bare repo, convert it to a worktree, and initialize a jj workspace:
-
-```bash
-ab export
-```
-
-This is the main command that sets up everything in one step.
-
-Skip the conversion and jj initialization:
-
-```bash
-ab export --no-convert
-```
-
-### Initialize Jujutsu Workspace
-
-Create a Jujutsu workspace backed by the bare repository:
-
-```bash
-ab init-jj
-```
-
-### Convert to Worktree
-
-Convert an existing repository to a worktree of its bare repo:
-
-```bash
-ab convert-to-worktree
-```
 
 ### Show Repository Information
 
@@ -73,21 +49,128 @@ This shows:
 - All git worktrees for the current repository
 - Current repository's jj workspace status
 - All jj workspaces found
-- All bare repositories
+
+### List All Repositories
+
+List all repositories and show which ones have git/jj repos and their workspaces:
+
+```bash
+ab ls
+```
+
+### Create a New Workspace
+
+Create a new jj workspace (default) or git worktree:
+
+```bash
+# Create jj workspace (default), prompts for session name
+ab new myrepo
+
+# Create jj workspace with session name
+ab new myrepo -s feature-x
+ab new myrepo --session feature-x
+
+# Create git worktree
+ab new myrepo --session feature-x --git
+
+# Create jj workspace explicitly
+ab new myrepo --session feature-x --jj
+
+# Use current directory's repo
+ab new --session feature-x
+ab new -s feature-x
+```
+
+### Spawn a Docker Container
+
+Spawn a Docker container for a workspace:
+
+```bash
+# Spawn container for session (positional argument)
+ab spawn my-session
+
+# Specify repository with -r/--repo
+ab spawn my-session -r myrepo
+ab spawn my-session --repo myrepo
+
+# Create workspace and spawn container (--new flag)
+ab spawn my-session --repo myrepo --new
+ab spawn my-session -r myrepo -n
+
+# Use git worktree instead of jj workspace
+ab spawn my-session --repo myrepo --git
+
+# Override entrypoint
+ab spawn my-session --repo myrepo --entrypoint /bin/zsh
+```
+
+### Remove Repository
+
+Remove all workspaces and repositories for a given repo ID:
+
+```bash
+# Show what would be deleted (dry run)
+ab remove myrepo --dry-run
+
+# Remove with confirmation prompt
+ab remove myrepo
+
+# Remove without confirmation
+ab remove myrepo -f
+ab remove myrepo --force
+```
+
+### Interactive Clean
+
+Interactively select and clean repositories and their artifacts:
+
+```bash
+ab clean
+```
+
+### One-off Container
+
+Spawn a one-off container with the current directory mounted:
+
+```bash
+# Mount as read-only (default)
+ab oneoff
+
+# Mount as read-write
+ab oneoff -w
+ab oneoff --write
+
+# Override entrypoint
+ab oneoff --entrypoint /bin/zsh
+```
 
 ## How It Works
 
-- **Export**:
-  1. Clones your repository to a bare repo at `git_dir`, preserving the relative path structure from `base_repo_dir`
-  2. Transforms the current repo into a worktree of the bare repo
-  3. Creates a Jujutsu workspace at `jj_dir` that uses the bare Git repo as its backing store
-- **Convert**: Standalone command to transform a repo into a worktree of the bare repo
-- **Init JJ**: Standalone command to create a Jujutsu workspace using the bare Git repo
+- **Directory Structure**:
+  - `base_repo_dir`: Your source repositories (colocated jj/git repos)
+  - `git_dir`: Stores bare git repositories (for discovery/tracking)
+  - `jj_dir`: Stores JJ repositories (for discovery/tracking)
+  - `workspace_dir/git/{repo_path}/{session}`: Git worktrees
+  - `workspace_dir/jj/{repo_path}/{session}`: JJ workspaces
 
-All operations set `umask 0002` and configure `setgid` bits for proper group permissions.
+- **New Workspace**:
+  - For JJ: Creates a workspace from a colocated jj repo in `base_repo_dir` using `jj workspace add`
+  - For Git: Creates a worktree from a git repo in `base_repo_dir` using `git worktree add`
+
+- **Spawn Container**:
+  - Mounts the workspace path as read-write
+  - Mounts source repo's `.git` and `.jj` directories
+  - Adds configured mounts (ro/rw, absolute/home_relative)
+  - Runs as current user (uid:gid)
+  - Sets working directory to the workspace
+
+- **Repository Identification**:
+  - Repos are identified by their relative path from `base_repo_dir`
+  - Can search by full path (`fr/agent-box`) or partial name (`agent-box`)
 
 ## Requirements
 
 - Rust (2024 edition)
 - Git
-- Jujutsu (for `init-jj` command)
+- Jujutsu (for jj workspaces)
+- Docker (for container spawning)
