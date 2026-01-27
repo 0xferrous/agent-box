@@ -153,8 +153,8 @@ pub fn export_repo(config: &Config, no_convert: bool) -> Result<()> {
 
     // Convert to worktree and init jj by default unless --no-convert is specified
     if !no_convert {
-        println!("\nConverting to worktree...");
-        convert_to_worktree(config)?;
+        // println!("\nConverting to worktree...");
+        // convert_to_worktree(config)?;
 
         println!("\nInitializing jj workspace...");
         init_jj(config)?;
