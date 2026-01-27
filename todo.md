@@ -1,0 +1,2 @@
+- allow sharnig the nix store
+- 

@@ -4,6 +4,13 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::path::{RepoIdentifier, WorkspaceType, expand_path};
 
+/// Mount mode for one-off containers
+#[derive(Debug, Clone, Copy)]
+pub enum MountMode {
+    Ro,
+    Rw,
+}
+
 /// Configuration for running a container
 #[derive(Debug)]
 pub struct ContainerConfig {
@@ -39,35 +46,76 @@ pub async fn spawn_container(
     run_container(&container_config).await
 }
 
-/// Build container configuration from workspace and config
-fn build_container_config(
+/// Spawn a one-off container with the given directory mounted
+pub async fn spawn_oneoff_container(
     config: &Config,
-    repo_id: &RepoIdentifier,
-    wtype: WorkspaceType,
-    workspace_path: &PathBuf,
+    dir: &PathBuf,
+    mode: MountMode,
+    entrypoint_override: Option<&str>,
+) -> Result<()> {
+    let container_config = build_oneoff_config(config, dir, mode, entrypoint_override)?;
+    run_container(&container_config).await
+}
+
+/// Build container configuration for a one-off container
+fn build_oneoff_config(
+    config: &Config,
+    dir: &PathBuf,
+    mode: MountMode,
     entrypoint_override: Option<&str>,
 ) -> Result<ContainerConfig> {
-    let pb_to_str = |pb: &PathBuf| pb.canonicalize().unwrap().to_string_lossy().to_string();
+    let dir_str = dir
+        .canonicalize()
+        .wrap_err("Failed to canonicalize directory")?
+        .to_string_lossy()
+        .to_string();
+
+    let mode_str = match mode {
+        MountMode::Ro => "ro",
+        MountMode::Rw => "rw",
+    };
+
+    let mut binds = vec![format!("{}:{}:{}", dir_str, dir_str, mode_str)];
+    add_config_mounts(config, &mut binds)?;
+
+    let uid = nix::unistd::getuid().as_raw();
+    let gid = nix::unistd::getgid().as_raw();
+
+    let username = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "user".to_string());
+
+    let entrypoint = entrypoint_override
+        .map(|s| vec![s.to_string()])
+        .or_else(|| config.docker.entrypoint.clone());
+
+    let env = vec![
+        format!("USER={}", username),
+        format!("HOME=/home/{}", username),
+    ];
+
+    Ok(ContainerConfig {
+        image: config.docker.image.clone(),
+        entrypoint,
+        user: format!("{}:{}", uid, gid),
+        working_dir: dir_str,
+        mounts: binds,
+        env,
+    })
+}
+
+/// Add config-defined mounts to the binds vector
+fn add_config_mounts(config: &Config, binds: &mut Vec<String>) -> Result<()> {
+    let pb_to_str = |pb: &PathBuf| {
+        pb.canonicalize()
+            .expect(&format!("couldnt canonicalize: {pb:?}"))
+            .to_string_lossy()
+            .to_string()
+    };
     let mount_path = |path: &str, mode: &str| format!("{path}:{path}:{mode}");
     let mount_path_custom = |src: &str, dst: &str, mode: &str| format!("{src}:{dst}:{mode}");
     let mount_path_ro = |path: &str| mount_path(path, "ro");
     let mount_path_rw = |path: &str| mount_path(path, "rw");
-
-    let workspace_path_str = pb_to_str(&workspace_path);
-    let backing_binds = match wtype {
-        WorkspaceType::Git => vec![repo_id.git_path(config)],
-        WorkspaceType::Jj => vec![repo_id.git_path(config), repo_id.jj_path(config)],
-    };
-    let more_binds = backing_binds
-        .iter()
-        .map(|it| {
-            let path = pb_to_str(it);
-            mount_path_rw(&path)
-        })
-        .collect::<Vec<_>>();
-
-    let mut binds = vec![mount_path_rw(&workspace_path_str)];
-    binds.extend(more_binds);
 
     // Process read-only absolute mounts
     for dir in &config.docker.mounts.ro.absolute {
@@ -81,8 +129,7 @@ fn build_container_config(
             ));
         }
 
-        let expanded_str = pb_to_str(&expanded);
-        binds.push(mount_path_ro(&expanded_str));
+        binds.push(mount_path_ro(&pb_to_str(&expanded)));
     }
 
     // Process read-only home_relative mounts
@@ -112,8 +159,7 @@ fn build_container_config(
             ));
         }
 
-        let expanded_str = pb_to_str(&expanded);
-        binds.push(mount_path_rw(&expanded_str));
+        binds.push(mount_path_rw(&pb_to_str(&expanded)));
     }
 
     // Process read-write home_relative mounts
@@ -131,10 +177,46 @@ fn build_container_config(
         binds.push(mount_path_custom(&host_path, &container_path, "rw"));
     }
 
+    Ok(())
+}
+
+/// Build container configuration from workspace and config
+fn build_container_config(
+    config: &Config,
+    repo_id: &RepoIdentifier,
+    _wtype: WorkspaceType,
+    workspace_path: &PathBuf,
+    entrypoint_override: Option<&str>,
+) -> Result<ContainerConfig> {
+    let pb_to_str = |pb: &PathBuf| {
+        pb.canonicalize()
+            .expect(&format!("couldnt canonicalize: {pb:?}"))
+            .to_string_lossy()
+            .to_string()
+    };
+    let mount_path_rw = |path: &str| format!("{path}:{path}:rw");
+
+    let workspace_path_str = pb_to_str(&workspace_path);
+
+    // Mount source repo's .git and .jj directories (not the whole source)
+    let source_path = repo_id.source_path(config);
+    let source_git = source_path.join(".git");
+    let source_jj = source_path.join(".jj");
+
+    let mut binds = vec![mount_path_rw(&workspace_path_str)];
+
+    if source_git.exists() {
+        binds.push(mount_path_rw(&pb_to_str(&source_git)));
+    }
+    if source_jj.exists() {
+        binds.push(mount_path_rw(&pb_to_str(&source_jj)));
+    }
+
+    add_config_mounts(config, &mut binds)?;
+
     let uid = nix::unistd::getuid().as_raw();
     let gid = nix::unistd::getgid().as_raw();
 
-    // Get the current user name
     let username = std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "user".to_string());
@@ -143,29 +225,10 @@ fn build_container_config(
         .map(|s| vec![s.to_string()])
         .or_else(|| config.docker.entrypoint.clone());
 
-    // Configure git safe.directory for the workspace and backing paths
-    // Also configure core.sharedRepository to ensure proper group permissions
-    let backing_paths_str = backing_binds
-        .iter()
-        .map(|pb| pb_to_str(pb))
-        .collect::<Vec<_>>();
-
-    let git_configs = std::iter::once(("core.sharedRepository", "group"))
-        .chain(std::iter::once((
-            "safe.directory",
-            workspace_path_str.as_str(),
-        )))
-        .chain(
-            backing_paths_str
-                .iter()
-                .map(|p| ("safe.directory", p.as_str())),
-        );
-
-    let mut git_env = build_git_config_env(git_configs);
-
-    // Add USER and HOME environment variables to make user environment available in container
-    git_env.push(format!("USER={}", username));
-    git_env.push(format!("HOME=/home/{}", username));
+    let env = vec![
+        format!("USER={}", username),
+        format!("HOME=/home/{}", username),
+    ];
 
     Ok(ContainerConfig {
         image: config.docker.image.clone(),
@@ -173,7 +236,7 @@ fn build_container_config(
         user: format!("{}:{}", uid, gid),
         working_dir: workspace_path_str,
         mounts: binds,
-        env: git_env,
+        env,
     })
 }
 
@@ -234,21 +297,6 @@ async fn run_container(config: &ContainerConfig) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Build GIT_CONFIG_* environment variables from key-value pairs
-fn build_git_config_env<'a>(configs: impl IntoIterator<Item = (&'a str, &'a str)>) -> Vec<String> {
-    let pairs: Vec<(&str, &str)> = configs.into_iter().collect();
-    let count = pairs.len();
-
-    let mut env = vec![format!("GIT_CONFIG_COUNT={}", count)];
-
-    for (i, (key, value)) in pairs.iter().enumerate() {
-        env.push(format!("GIT_CONFIG_KEY_{}={}", i, key));
-        env.push(format!("GIT_CONFIG_VALUE_{}={}", i, value));
-    }
-
-    env
 }
 
 /// Resolve a home_relative mount path

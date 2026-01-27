@@ -1,5 +1,5 @@
 use eyre::{OptionExt, Result, WrapErr, bail};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::config::Config;
 use crate::path::RepoIdentifier;
@@ -23,29 +23,37 @@ fn find_git_root() -> Result<PathBuf> {
         .map(|p: &std::path::Path| p.to_path_buf())
 }
 
-/// Create a new workspace (git worktree or jj workspace) from the current git repository
+/// Resolve repo argument to a RepoIdentifier
+/// - If None: find git root from cwd and compute RepoId from it
+/// - If Some: use locate to find the repo_id
+pub fn resolve_repo_id(config: &Config, repo_name: Option<&str>) -> Result<RepoIdentifier> {
+    let repo_id = match repo_name {
+        Some(name) => RepoIdentifier::locate(config, name)?
+            .ok_or_else(|| eyre::eyre!("Could not find repository matching '{}'", name)),
+        None => {
+            let git_root = find_git_root()?;
+            RepoIdentifier::from_repo_path(config, &git_root)
+        }
+    };
+    println!("debug: {repo_id:?}");
+    repo_id
+}
+
+/// Create a new workspace (git worktree or jj workspace)
 pub fn new_workspace(
     config: &Config,
     repo_name: Option<&str>,
     session_name: Option<&str>,
     workspace_type: crate::path::WorkspaceType,
 ) -> Result<()> {
-    // Find git root
-    let git_root = find_git_root()?;
-
-    // Determine repo_id from git_root or use provided repo_name
-    let repo_id = if let Some(name) = repo_name {
-        RepoIdentifier {
-            relative_path: PathBuf::from(name),
-        }
-    } else {
-        RepoIdentifier::from_repo_path(config, &git_root)?
-    };
+    // Resolve repo_id from repo_name argument
+    let repo_id = resolve_repo_id(config, repo_name)?;
 
     // Get session name
     let session = get_session_name(session_name)?;
 
-    // Calculate workspace path
+    // Calculate paths
+    let source_path = repo_id.source_path(config);
     let workspace_path = repo_id.workspace_path(config, workspace_type, &session);
 
     println!(
@@ -55,20 +63,17 @@ pub fn new_workspace(
             crate::path::WorkspaceType::Jj => "jj workspace",
         }
     );
-    println!("  Git root: {}", git_root.display());
+    println!("  Source: {}", source_path.display());
     println!("  Workspace: {}", workspace_path.display());
     println!("  Session: {}", session);
 
-    // Create workspace directory
-    std::fs::create_dir_all(&workspace_path)?;
-
-    // Run the appropriate CLI command from git_root
+    // Run the appropriate CLI command
     match workspace_type {
         crate::path::WorkspaceType::Git => {
-            create_git_worktree_from_repo(&workspace_path, &git_root, &session)?;
+            create_git_worktree(config, &repo_id, &session)?;
         }
         crate::path::WorkspaceType::Jj => {
-            create_jj_workspace_from_repo(&workspace_path, &git_root)?;
+            create_jj_workspace(config, &repo_id, &session)?;
         }
     }
 
@@ -80,25 +85,43 @@ pub fn new_workspace(
     Ok(())
 }
 
-/// Create a new jj workspace from a git repository
-fn create_jj_workspace_from_repo(workspace_path: &Path, git_root: &Path) -> Result<()> {
-    println!("Initializing jj workspace...");
+/// Create a new jj workspace from an existing colocated jj repo
+fn create_jj_workspace(config: &Config, repo_id: &RepoIdentifier, session: &str) -> Result<()> {
+    let source_path = repo_id.source_path(config);
+    let workspace_path = repo_id.jj_workspace_path(config, session);
 
-    // Initialize jj workspace using jj git init command with --no-colocate
+    // Verify that source is a colocated jj repo
+    let jj_dir = source_path.join(".jj");
+    if !jj_dir.exists() {
+        bail!(
+            "Source is not a colocated jj repository (no .jj directory found at {})\n\
+             Please initialize jj in your repository first with: jj git init --colocate",
+            source_path.display()
+        );
+    }
+
+    // Create parent directory (jj workspace add will create the workspace directory itself)
+    if let Some(parent) = workspace_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    println!("Creating jj workspace from colocated repo...");
+
+    // Use jj workspace add from the colocated repo
     let output = std::process::Command::new("jj")
+        .current_dir(&source_path)
         .args(&[
-            "git",
-            "init",
-            "--git-repo",
-            path_to_str(git_root)?,
-            "--no-colocate",
-            path_to_str(workspace_path)?,
+            "workspace",
+            "add",
+            "--name",
+            session,
+            path_to_str(&workspace_path)?,
         ])
         .output()?;
 
     if !output.status.success() {
         bail!(
-            "Failed to initialize jj workspace: {}",
+            "Failed to create jj workspace: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
@@ -109,15 +132,19 @@ fn create_jj_workspace_from_repo(workspace_path: &Path, git_root: &Path) -> Resu
 }
 
 /// Create a new git worktree from a git repository
-fn create_git_worktree_from_repo(
-    workspace_path: &Path,
-    git_root: &Path,
-    branch: &str,
-) -> Result<()> {
+fn create_git_worktree(config: &Config, repo_id: &RepoIdentifier, session: &str) -> Result<()> {
+    let source_path = repo_id.source_path(config);
+    let workspace_path = repo_id.git_workspace_path(config, session);
+
+    // Create parent directory (git worktree add will create the workspace directory itself)
+    if let Some(parent) = workspace_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
     // Check if branch exists
     let check_output = std::process::Command::new("git")
-        .current_dir(git_root)
-        .args(&["rev-parse", "--verify", &format!("refs/heads/{}", branch)])
+        .current_dir(&source_path)
+        .args(&["rev-parse", "--verify", &format!("refs/heads/{}", session)])
         .output()?;
 
     let branch_exists = check_output.status.success();
@@ -128,17 +155,17 @@ fn create_git_worktree_from_repo(
     // If branch doesn't exist, create it with -b flag
     if !branch_exists {
         args.push("-b");
-        args.push(branch);
-        args.push(path_to_str(workspace_path)?);
-        println!("  Creating new branch: {}", branch);
+        args.push(session);
+        args.push(path_to_str(&workspace_path)?);
+        println!("  Creating new branch: {}", session);
     } else {
-        args.push(path_to_str(workspace_path)?);
-        args.push(branch);
-        println!("  Using existing branch: {}", branch);
+        args.push(path_to_str(&workspace_path)?);
+        args.push(session);
+        println!("  Using existing branch: {}", session);
     }
 
     let output = std::process::Command::new("git")
-        .current_dir(git_root)
+        .current_dir(&source_path)
         .args(&args)
         .output()?;
 

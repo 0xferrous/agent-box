@@ -128,6 +128,11 @@ impl RepoIdentifier {
         Ok(Self { relative_path })
     }
 
+    /// Get the full path in base_repo_dir (source repo location)
+    pub fn source_path(&self, config: &Config) -> PathBuf {
+        config.base_repo_dir.join(&self.relative_path)
+    }
+
     /// Get the full path in git_dir (bare repo location)
     pub fn git_path(&self, config: &Config) -> PathBuf {
         config.git_dir.join(&self.relative_path)

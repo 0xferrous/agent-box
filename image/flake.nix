@@ -75,8 +75,10 @@
             gnumake
             lsof
             unixtools.netstat
+            gnupg
 
             aiTools.pi
+            aiTools.claude-code
           ];
         in
         {
