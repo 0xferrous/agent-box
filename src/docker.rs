@@ -32,7 +32,8 @@ pub async fn spawn_container(
     }
 
     // Build container configuration
-    let container_config = build_container_config(config, repo_id, wtype, &workspace_path, entrypoint_override)?;
+    let container_config =
+        build_container_config(config, repo_id, wtype, &workspace_path, entrypoint_override)?;
 
     // Run the container
     run_container(&container_config).await
@@ -46,7 +47,6 @@ fn build_container_config(
     workspace_path: &PathBuf,
     entrypoint_override: Option<&str>,
 ) -> Result<ContainerConfig> {
-
     let pb_to_str = |pb: &PathBuf| pb.canonicalize().unwrap().to_string_lossy().to_string();
     let mount_path = |path: &str, mode: &str| format!("{path}:{path}:{mode}");
     let mount_path_custom = |src: &str, dst: &str, mode: &str| format!("{src}:{dst}:{mode}");
@@ -227,7 +227,10 @@ async fn run_container(config: &ContainerConfig) -> Result<()> {
         .wrap_err("Failed to execute docker command")?;
 
     if !status.success() {
-        return Err(eyre::eyre!("Docker container exited with status: {}", status));
+        return Err(eyre::eyre!(
+            "Docker container exited with status: {}",
+            status
+        ));
     }
 
     Ok(())

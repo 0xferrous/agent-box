@@ -181,15 +181,24 @@ pub fn init_jj(config: &Config) -> Result<()> {
     // Create jj workspace directory
     fs::create_dir_all(&jj_workspace_path)?;
 
-    // Initialize jj workspace with external git repo
-    let config_jj = jj_lib::config::StackedConfig::with_defaults();
-    let user_settings = jj_lib::settings::UserSettings::from_config(config_jj)?;
+    // Initialize jj workspace using jj git init command with --no-colocate
+    let output = std::process::Command::new("jj")
+        .args(&[
+            "git",
+            "init",
+            "--git-repo",
+            path_to_str(&bare_repo_path)?,
+            "--no-colocate",
+        ])
+        .current_dir(&jj_workspace_path)
+        .output()?;
 
-    let (_workspace, _repo) = jj_lib::workspace::Workspace::init_external_git(
-        &user_settings,
-        &jj_workspace_path,
-        &bare_repo_path,
-    )?;
+    if !output.status.success() {
+        bail!(
+            "Failed to initialize jj workspace: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     println!(
         "Successfully initialized jj workspace at: {}",

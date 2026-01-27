@@ -10,8 +10,8 @@ use config::load_config_or_exit;
 use display::info;
 use docker::spawn_container;
 use repo::{
-    clean_repos, convert_to_worktree, export_repo, init_jj, list_repos,
-    new_git_worktree, new_workspace, remove_repo,
+    clean_repos, convert_to_worktree, export_repo, init_jj, list_repos, new_git_worktree,
+    new_workspace, remove_repo,
 };
 
 use crate::path::WorkspaceType;
@@ -84,7 +84,6 @@ enum Commands {
 }
 
 fn main() {
-
     let cli = Cli::parse();
     let config = load_config_or_exit();
 
