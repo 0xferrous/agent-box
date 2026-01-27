@@ -31,6 +31,23 @@ home_relative = ["~/.local/share"]
 
 All paths support `~` expansion and will be canonicalized.
 
+### Sharing Nix Store
+
+To share your host's Nix store with containers:
+
+```toml
+[docker]
+env = ["NIX_REMOTE=daemon"]
+
+[docker.mounts.ro]
+absolute = ["/nix/store"]
+
+[docker.mounts.rw]
+absolute = ["/nix/var/nix/daemon-socket/"]
+```
+
+This allows containers to use binaries from your host's Nix store via the daemon socket.
+
 ## Usage
 
 ### Show Repository Information
@@ -42,10 +59,10 @@ ab info
 ```
 
 This shows:
-- Configuration paths (git_dir, jj_dir, etc.)
-- Current repository's bare repo location
+- Configuration paths (workspace_dir, base_repo_dir)
+- Current repository status
 - All git worktrees for the current repository
-- Current repository's jj workspace status
+- JJ workspace status
 - All jj workspaces found
 
 ### List All Repositories

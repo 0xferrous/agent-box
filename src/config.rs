@@ -28,12 +28,12 @@ pub struct DockerConfig {
     pub entrypoint: Option<Vec<String>>,
     #[serde(default)]
     pub mounts: MountsConfig,
+    #[serde(default)]
+    pub env: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    pub git_dir: PathBuf,
-    pub jj_dir: PathBuf,
     pub workspace_dir: PathBuf,
     pub base_repo_dir: PathBuf,
     pub docker: DockerConfig,
@@ -53,8 +53,6 @@ pub fn load_config() -> Result<Config> {
         toml::from_str(&content).wrap_err("Failed to parse TOML configuration")?;
 
     // Expand all paths
-    config.git_dir = expand_path(&config.git_dir).wrap_err("Failed to expand git_dir path")?;
-    config.jj_dir = expand_path(&config.jj_dir).wrap_err("Failed to expand jj_dir path")?;
     config.workspace_dir =
         expand_path(&config.workspace_dir).wrap_err("Failed to expand workspace_dir path")?;
     config.base_repo_dir =

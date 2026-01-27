@@ -31,12 +31,13 @@ pub fn display_git_worktrees(repo_id: &RepoIdentifier, config: &Config) -> Resul
 /// Display JJ workspace information for current repository
 pub fn display_jj_workspace_info(config: &Config, repo_path: &Path) -> Result<()> {
     let repo_id = RepoIdentifier::from_repo_path(config, repo_path)?;
-    let jj_workspace_path = repo_id.jj_path(config);
+    let source_path = repo_id.source_path(config);
+    let jj_dir = source_path.join(".jj");
 
     println!("\n=== JJ Workspace ===\n");
-    println!("JJ workspace path:   {}", jj_workspace_path.display());
+    println!("JJ workspace path:   {}", source_path.display());
 
-    if jj_workspace_path.exists() {
+    if jj_dir.exists() {
         println!("Status:              Initialized");
     } else {
         println!("Status:              Not initialized");
@@ -85,12 +86,12 @@ pub fn display_current_repo_info(config: &Config) -> Result<()> {
 
     let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
 
-    if repo_id.git_path(config).exists() {
+    if repo_id.source_path(config).join(".git").exists() {
         if let Err(e) = display_git_worktrees(&repo_id, config) {
             eprintln!("  Error displaying git worktrees: {}", e);
         }
     } else {
-        println!("(Bare repo does not exist)");
+        println!("(Git repo not initialized)");
     }
 
     if let Err(e) = display_jj_workspace_info(config, &repo_path) {
@@ -107,8 +108,6 @@ pub fn display_current_repo_info(config: &Config) -> Result<()> {
 /// Show repository information and list workspaces
 pub fn info(config: &Config) -> Result<()> {
     println!("=== Agent Box Configuration ===\n");
-    println!("Git bare repos dir:  {}", config.git_dir.display());
-    println!("JJ workspaces dir:   {}", config.jj_dir.display());
     println!("Workspace dir:       {}", config.workspace_dir.display());
     println!("Base repo dir:       {}", config.base_repo_dir.display());
 

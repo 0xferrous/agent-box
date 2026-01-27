@@ -221,11 +221,9 @@ fn get_session_name(session_name: Option<&str>) -> Result<String> {
     }
 }
 
-/// Remove all workspaces and repositories for a given repo ID
+/// Remove all workspaces for a given repo ID
 pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> Result<()> {
-    let paths_to_remove = vec![
-        ("Git bare repo", repo_id.git_path(config)),
-        ("JJ workspace", repo_id.jj_path(config)),
+    let paths_to_remove: Vec<(&str, PathBuf)> = vec![
         (
             "Git worktrees",
             config
@@ -281,12 +279,10 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
 pub fn clean_repos(config: &Config) -> Result<()> {
     use std::collections::BTreeSet;
 
-    // Discover all git and jj repos
-    let git_repos = RepoIdentifier::discover_git_repo_ids(config)?;
-    let jj_repos = RepoIdentifier::discover_jj_repo_ids(config)?;
-
-    // Collect all unique repo identifiers
-    let all_repos: BTreeSet<_> = git_repos.into_iter().chain(jj_repos.into_iter()).collect();
+    // Discover all repos
+    let all_repos: BTreeSet<_> = RepoIdentifier::discover_repo_ids(config)?
+        .into_iter()
+        .collect();
 
     if all_repos.is_empty() {
         println!("No repositories found.");
@@ -349,9 +345,8 @@ pub fn list_repos(config: &Config) -> Result<()> {
     use crate::path::Workspace;
     use std::collections::{BTreeMap, BTreeSet};
 
-    // Discover all git and jj repos
-    let git_repos = RepoIdentifier::discover_git_repo_ids(config)?;
-    let jj_repos = RepoIdentifier::discover_jj_repo_ids(config)?;
+    // Discover all repos
+    let all_repos_vec = RepoIdentifier::discover_repo_ids(config)?;
 
     // Discover all workspaces
     let git_workspaces = Workspace::discover_workspaces_git(config)?;
@@ -368,8 +363,8 @@ pub fn list_repos(config: &Config) -> Result<()> {
         jj_ws_map.entry(&ws.repo_id).or_default().push(&ws.session);
     }
 
-    // Collect all unique repo identifiers using chain and collect
-    let all_repos: BTreeSet<_> = git_repos.into_iter().chain(jj_repos.into_iter()).collect();
+    // Collect all unique repo identifiers
+    let all_repos: BTreeSet<_> = all_repos_vec.into_iter().collect();
 
     if all_repos.is_empty() {
         println!("No repositories found.");
@@ -397,8 +392,9 @@ pub fn list_repos(config: &Config) -> Result<()> {
     println!("{}", "-".repeat(max_width + 78));
 
     for repo_id in all_repos {
-        let has_git = repo_id.git_path(config).exists();
-        let has_jj = repo_id.jj_path(config).exists();
+        let source_path = repo_id.source_path(config);
+        let has_git = source_path.join(".git").exists();
+        let has_jj = source_path.join(".jj").exists();
 
         let git_sessions = git_ws_map
             .get(&repo_id)

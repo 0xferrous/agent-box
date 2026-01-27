@@ -89,10 +89,11 @@ fn build_oneoff_config(
         .map(|s| vec![s.to_string()])
         .or_else(|| config.docker.entrypoint.clone());
 
-    let env = vec![
+    let mut env = vec![
         format!("USER={}", username),
         format!("HOME=/home/{}", username),
     ];
+    env.extend(config.docker.env.iter().cloned());
 
     Ok(ContainerConfig {
         image: config.docker.image.clone(),
@@ -225,10 +226,11 @@ fn build_container_config(
         .map(|s| vec![s.to_string()])
         .or_else(|| config.docker.entrypoint.clone());
 
-    let env = vec![
+    let mut env = vec![
         format!("USER={}", username),
         format!("HOME=/home/{}", username),
     ];
+    env.extend(config.docker.env.iter().cloned());
 
     Ok(ContainerConfig {
         image: config.docker.image.clone(),
