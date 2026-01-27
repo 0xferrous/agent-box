@@ -9,10 +9,7 @@ mod repo;
 use config::load_config_or_exit;
 use display::info;
 use docker::spawn_container;
-use repo::{
-    clean_repos, convert_to_worktree, export_repo, init_jj, list_repos, new_git_worktree,
-    new_workspace, remove_repo,
-};
+use repo::{clean_repos, list_repos, new_workspace, remove_repo};
 
 use crate::path::WorkspaceType;
 
@@ -26,32 +23,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Export git repository, convert to worktree, and initialize jj workspace
-    Export {
-        /// Skip converting to worktree and initializing jj workspace
-        #[arg(long)]
-        no_convert: bool,
-    },
-    /// Initialize jj workspace backed by git bare repo
-    InitJj,
-    /// Convert current repo to worktree of bare repo
-    ConvertToWorktree,
     /// Show repository information and list workspaces
     Info,
     /// List all repositories and show which ones have git/jj repos
     Ls,
-    /// Create a new workspace (jj or git worktree) for an existing repository
+    /// Create a new workspace (jj or git worktree)
     New {
-        /// Repository name to search for
+        /// Repository name (defaults to current directory's git repo)
         repo_name: Option<String>,
         /// Session/workspace name
         #[arg(long, short)]
         session: Option<String>,
-        /// Create a git worktree instead of jj workspace
-        #[arg(long, conflicts_with = "jj")]
+        /// Create a git worktree
+        #[arg(long)]
         git: bool,
-        /// Create a jj workspace (default)
-        #[arg(long, conflicts_with = "git", default_value_t = true)]
+        /// Create a jj workspace
+        #[arg(long)]
         jj: bool,
     },
     /// Spawn a new docker container for a workspace
@@ -67,6 +54,9 @@ enum Commands {
         git: bool,
         #[arg(long, conflicts_with = "git", default_value_t = true)]
         jj: bool,
+        /// Create workspace if it doesn't exist (equivalent to running `ab new` first)
+        #[arg(long, short)]
+        new: bool,
     },
     /// Remove all workspaces and repositories for a given repo ID
     Remove {
@@ -88,24 +78,6 @@ fn main() {
     let config = load_config_or_exit();
 
     match cli.command {
-        Commands::Export { no_convert } => {
-            if let Err(e) = export_repo(&config, no_convert) {
-                eprintln!("Error exporting repository: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Commands::InitJj => {
-            if let Err(e) = init_jj(&config) {
-                eprintln!("Error initializing jj workspace: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Commands::ConvertToWorktree => {
-            if let Err(e) = convert_to_worktree(&config) {
-                eprintln!("Error converting to worktree: {}", e);
-                std::process::exit(1);
-            }
-        }
         Commands::Info => {
             if let Err(e) = info(&config) {
                 eprintln!("Error getting repository info: {}", e);
@@ -122,19 +94,25 @@ fn main() {
             repo_name,
             session,
             git,
-            jj: _,
+            jj,
         } => {
-            if git {
-                if let Err(e) = new_git_worktree(&config, repo_name.as_deref(), session.as_deref())
-                {
-                    eprintln!("Error creating new git worktree: {}", e);
-                    std::process::exit(1);
-                }
+            let workspace_type = if git {
+                WorkspaceType::Git
+            } else if jj {
+                WorkspaceType::Jj
             } else {
-                if let Err(e) = new_workspace(&config, repo_name.as_deref(), session.as_deref()) {
-                    eprintln!("Error creating new jj workspace: {}", e);
-                    std::process::exit(1);
-                }
+                // Default to jj if neither specified
+                WorkspaceType::Jj
+            };
+
+            if let Err(e) = new_workspace(
+                &config,
+                repo_name.as_deref(),
+                session.as_deref(),
+                workspace_type,
+            ) {
+                eprintln!("Error creating new workspace: {}", e);
+                std::process::exit(1);
             }
         }
         Commands::Spawn {
@@ -143,6 +121,7 @@ fn main() {
             entrypoint,
             git,
             jj: _,
+            new: create_new,
         } => {
             use path::RepoIdentifier;
             let wtype = if git {
@@ -150,6 +129,14 @@ fn main() {
             } else {
                 WorkspaceType::Jj
             };
+
+            // Create workspace first if --new flag is set
+            if create_new {
+                if let Err(e) = new_workspace(&config, Some(&repo), Some(&session), wtype) {
+                    eprintln!("Error creating new workspace: {}", e);
+                    std::process::exit(1);
+                }
+            }
 
             // Locate the repository identifier
             let repo_id = match RepoIdentifier::locate(&config, &repo) {

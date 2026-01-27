@@ -1,185 +1,88 @@
-use eyre::{OptionExt, Result, bail};
-use std::fs;
+use eyre::{OptionExt, Result, WrapErr, bail};
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
-use crate::path::{RepoIdentifier, calculate_relative_path, path_to_str};
+use crate::path::RepoIdentifier;
+use crate::path::path_to_str;
 
-/// RAII guard for temporary directory that automatically cleans up on drop
-struct TempDir {
-    path: PathBuf,
-}
-
-impl TempDir {
-    fn new(path: PathBuf) -> Result<Self> {
-        fs::create_dir_all(&path)?;
-        Ok(Self { path })
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        if self.path.exists() {
-            if let Err(e) = fs::remove_dir_all(&self.path) {
-                eprintln!(
-                    "Warning: Failed to clean up temporary directory {}: {}",
-                    self.path.display(),
-                    e
-                );
-            }
-        }
-    }
-}
-
-/// Get repository path from a gix repository
-pub fn get_repo_path(repo: &gix::Repository) -> PathBuf {
-    if let Some(work_tree) = repo.workdir() {
-        work_tree.to_path_buf()
-    } else {
-        repo.git_dir().to_path_buf()
-    }
-}
-
-/// Configure a git repository for shared group access
-/// Sets core.sharedRepository = group to ensure proper permissions on all git files
-fn configure_shared_repository(repo_path: &Path) -> Result<()> {
-    use std::io::Write;
-
-    // Directly append to the config file
-    // This is simpler than trying to parse and manipulate with gix config API
-    let config_path = repo_path.join("config");
-
-    // Read existing config to check if sharedRepository already exists
-    let existing = fs::read_to_string(&config_path)?;
-
-    if !existing.contains("sharedRepository") {
-        // Append the setting to the config file
-        let mut file = fs::OpenOptions::new().append(true).open(&config_path)?;
-
-        writeln!(file, "[core]")?;
-        writeln!(file, "\tsharedRepository = group")?;
-    }
-
-    Ok(())
-}
-
-/// Discover repository in current directory
-pub fn discover_repo() -> Result<gix::Repository> {
-    use eyre::Context;
-
+/// Find the git root directory by traversing up from the current directory
+fn find_git_root() -> Result<PathBuf> {
     let current_dir =
         std::env::current_dir().wrap_err("Failed to get current working directory")?;
+
     let repo = gix::discover(&current_dir).wrap_err_with(|| {
         format!(
             "Failed to discover git repository in {}",
             current_dir.display()
         )
     })?;
-    Ok(repo)
+
+    // Get the work tree path
+    repo.workdir()
+        .ok_or_eyre("Cannot work with a bare repository")
+        .map(|p: &std::path::Path| p.to_path_buf())
 }
 
-/// Export git repository to bare repo
-pub fn export_repo(config: &Config, no_convert: bool) -> Result<()> {
-    let repo = discover_repo()?;
+/// Create a new workspace (git worktree or jj workspace) from the current git repository
+pub fn new_workspace(
+    config: &Config,
+    repo_name: Option<&str>,
+    session_name: Option<&str>,
+    workspace_type: crate::path::WorkspaceType,
+) -> Result<()> {
+    // Find git root
+    let git_root = find_git_root()?;
 
-    // Check for uncommitted changes (only if not bare)
-    if repo.workdir().is_some() {
-        use gix::status::{Item, index_worktree};
+    // Determine repo_id from git_root or use provided repo_name
+    let repo_id = if let Some(name) = repo_name {
+        RepoIdentifier {
+            relative_path: PathBuf::from(name),
+        }
+    } else {
+        RepoIdentifier::from_repo_path(config, &git_root)?
+    };
 
-        let status_iter = repo.status(gix::progress::Discard)?.into_iter(None)?;
+    // Get session name
+    let session = get_session_name(session_name)?;
 
-        // Check for any tracked file changes (staged or unstaged)
-        // We allow untracked files
-        for item in status_iter {
-            let item = item?;
-            match item {
-                Item::IndexWorktree(index_worktree::Item::DirectoryContents { .. }) => {
-                    // Untracked files/directories - allowed
-                    continue;
-                }
-                Item::IndexWorktree(index_worktree::Item::Modification { .. })
-                | Item::IndexWorktree(index_worktree::Item::Rewrite { .. })
-                | Item::TreeIndex(_) => {
-                    // Staged or unstaged changes to tracked files - not allowed
-                    bail!(
-                        "Cannot export: repository has uncommitted changes to tracked files. Please commit or stash all changes first."
-                    );
-                }
-            }
+    // Calculate workspace path
+    let workspace_path = repo_id.workspace_path(config, workspace_type, &session);
+
+    println!(
+        "Creating new {} workspace:",
+        match workspace_type {
+            crate::path::WorkspaceType::Git => "git worktree",
+            crate::path::WorkspaceType::Jj => "jj workspace",
+        }
+    );
+    println!("  Git root: {}", git_root.display());
+    println!("  Workspace: {}", workspace_path.display());
+    println!("  Session: {}", session);
+
+    // Create workspace directory
+    std::fs::create_dir_all(&workspace_path)?;
+
+    // Run the appropriate CLI command from git_root
+    match workspace_type {
+        crate::path::WorkspaceType::Git => {
+            create_git_worktree_from_repo(&workspace_path, &git_root, &session)?;
+        }
+        crate::path::WorkspaceType::Jj => {
+            create_jj_workspace_from_repo(&workspace_path, &git_root)?;
         }
     }
 
-    // Get the work tree path (or git dir for bare repos)
-    let repo_path = get_repo_path(&repo);
-
-    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
-    let target_path = repo_id.git_path(config);
-
-    println!("Exporting repository:");
-    println!("  Source: {}", repo_path.display());
-    println!("  Target: {}", target_path.display());
-
-    // Create parent directories if they don't exist
-    if let Some(parent) = target_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Clone to bare repository using git CLI
-    let clone_output = std::process::Command::new("git")
-        .args(&[
-            "clone",
-            "--bare",
-            path_to_str(&repo_path)?,
-            path_to_str(&target_path)?,
-        ])
-        .output()?;
-
-    if !clone_output.status.success() {
-        bail!(
-            "Failed to clone repository: {}",
-            String::from_utf8_lossy(&clone_output.stderr)
-        );
-    }
-
-    // Configure the bare repository for shared group access
-    // This ensures pack files and other git objects get proper group permissions
-    configure_shared_repository(&target_path)?;
-
-    println!("\nSuccessfully exported to: {}", target_path.display());
-
-    // Convert to worktree and init jj by default unless --no-convert is specified
-    if !no_convert {
-        // println!("\nConverting to worktree...");
-        // convert_to_worktree(config)?;
-
-        println!("\nInitializing jj workspace...");
-        init_jj(config)?;
-    }
+    println!(
+        "\n✓ Successfully created workspace at: {}",
+        workspace_path.display()
+    );
 
     Ok(())
 }
 
-/// Initialize jj workspace backed by git bare repo
-pub fn init_jj(config: &Config) -> Result<()> {
-    let repo = discover_repo()?;
-
-    // Get the work tree path (or git dir for bare repos)
-    let repo_path = get_repo_path(&repo);
-
-    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
-    let bare_repo_path = repo_id.git_path(config);
-    let jj_workspace_path = repo_id.jj_path(config);
-
-    println!("Initializing jj workspace:");
-    println!("  Git bare repo: {}", bare_repo_path.display());
-    println!("  JJ workspace: {}", jj_workspace_path.display());
-
-    // Create jj workspace directory
-    fs::create_dir_all(&jj_workspace_path)?;
+/// Create a new jj workspace from a git repository
+fn create_jj_workspace_from_repo(workspace_path: &Path, git_root: &Path) -> Result<()> {
+    println!("Initializing jj workspace...");
 
     // Initialize jj workspace using jj git init command with --no-colocate
     let output = std::process::Command::new("jj")
@@ -187,10 +90,10 @@ pub fn init_jj(config: &Config) -> Result<()> {
             "git",
             "init",
             "--git-repo",
-            path_to_str(&bare_repo_path)?,
+            path_to_str(git_root)?,
             "--no-colocate",
+            path_to_str(workspace_path)?,
         ])
-        .current_dir(&jj_workspace_path)
         .output()?;
 
     if !output.status.success() {
@@ -200,227 +103,55 @@ pub fn init_jj(config: &Config) -> Result<()> {
         );
     }
 
-    println!(
-        "Successfully initialized jj workspace at: {}",
-        jj_workspace_path.display()
-    );
+    println!("  ✓ JJ workspace created successfully");
 
     Ok(())
 }
 
-/// Convert current repo to worktree of bare repo
-pub fn convert_to_worktree(config: &Config) -> Result<()> {
-    let repo = discover_repo()?;
+/// Create a new git worktree from a git repository
+fn create_git_worktree_from_repo(
+    workspace_path: &Path,
+    git_root: &Path,
+    branch: &str,
+) -> Result<()> {
+    // Check if branch exists
+    let check_output = std::process::Command::new("git")
+        .current_dir(git_root)
+        .args(&["rev-parse", "--verify", &format!("refs/heads/{}", branch)])
+        .output()?;
 
-    // Get the work tree path (error if bare repo)
-    let repo_path = repo
-        .workdir()
-        .ok_or_eyre("Cannot convert a bare repository to worktree")?
-        .to_path_buf();
+    let branch_exists = check_output.status.success();
 
-    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
-    let bare_repo_path = repo_id.git_path(config);
+    // Create worktree using git worktree add
+    let mut args = vec!["worktree", "add"];
 
-    if !bare_repo_path.exists() {
-        bail!(
-            "Bare repository does not exist at: {}. Run 'ab export' first.",
-            bare_repo_path.display()
-        );
+    // If branch doesn't exist, create it with -b flag
+    if !branch_exists {
+        args.push("-b");
+        args.push(branch);
+        args.push(path_to_str(workspace_path)?);
+        println!("  Creating new branch: {}", branch);
+    } else {
+        args.push(path_to_str(workspace_path)?);
+        args.push(branch);
+        println!("  Using existing branch: {}", branch);
     }
 
-    // Get current branch name
-    let head = repo.head()?;
-    let branch_name = if let Some(reference) = head.referent_name() {
-        reference.as_bstr().to_string()
-    } else {
-        bail!("Repository is in detached HEAD state. Cannot convert to worktree.");
-    };
-
-    println!("Converting repository to worktree:");
-    println!("  Current repo: {}", repo_path.display());
-    println!("  Bare repo: {}", bare_repo_path.display());
-    println!("  Branch: {}", branch_name);
-
-    // Create temporary directory for worktree with RAII cleanup
-    let temp_dir_path = std::env::temp_dir().join(format!("ab-worktree-{}", std::process::id()));
-    let temp_dir = TempDir::new(temp_dir_path)?;
-
-    println!(
-        "Creating temporary worktree at: {}",
-        temp_dir.path().display()
-    );
-
-    // Create worktree at temp location
     let output = std::process::Command::new("git")
-        .args(&[
-            "--git-dir",
-            path_to_str(&bare_repo_path)?,
-            "worktree",
-            "add",
-            path_to_str(temp_dir.path())?,
-            &branch_name,
-        ])
+        .current_dir(git_root)
+        .args(&args)
         .output()?;
 
     if !output.status.success() {
         bail!(
-            "Failed to create worktree: {}",
+            "Failed to create git worktree: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
 
-    // Remove current .git directory
-    println!("Removing current .git directory");
-    let current_git_dir = repo_path.join(".git");
-    fs::remove_dir_all(&current_git_dir)?;
-
-    // Copy .git file from temp to current location
-    // Use copy instead of rename because temp and repo might be on different filesystems
-    let temp_git_file = temp_dir.path().join(".git");
-    let new_git_file = repo_path.join(".git");
-    println!("Copying .git file from temp to current location");
-    fs::copy(&temp_git_file, &new_git_file)?;
-
-    // Use git worktree repair to fix all paths automatically
-    println!("Repairing worktree paths with git worktree repair");
-    let repair_output = std::process::Command::new("git")
-        .args(&[
-            "--git-dir",
-            path_to_str(&bare_repo_path)?,
-            "worktree",
-            "repair",
-            path_to_str(&repo_path)?,
-        ])
-        .output()?;
-
-    if !repair_output.status.success() {
-        eprintln!(
-            "Warning: git worktree repair reported issues: {}",
-            String::from_utf8_lossy(&repair_output.stderr)
-        );
-        eprintln!("Stdout: {}", String::from_utf8_lossy(&repair_output.stdout));
-    } else {
-        println!("  Worktree paths repaired successfully");
-    }
-
-    // Temp directory will be automatically cleaned up when temp_dir goes out of scope
-    println!("Cleaning up temporary directory");
-
-    println!("\nSuccessfully converted to worktree!");
-    println!("  Worktree location: {}", repo_path.display());
-    println!("  Backed by bare repo: {}", bare_repo_path.display());
+    println!("  ✓ Git worktree created successfully");
 
     Ok(())
-}
-
-/// Create a new jj workspace for an existing bare repository
-pub fn new_workspace(
-    config: &Config,
-    repo_name: Option<&str>,
-    session_name: Option<&str>,
-) -> Result<()> {
-    // Step 1: Search for bare repos and get selection
-    let bare_repo_path = find_and_select_bare_repo(config, repo_name)?;
-
-    // Step 2: Get session name
-    let session = get_session_name(session_name)?;
-
-    // Step 3: Calculate paths
-    let relative_path = calculate_relative_path(&config.git_dir, &bare_repo_path)?;
-    let jj_repo_path = config.jj_dir.join(&relative_path);
-    let workspace_path = config
-        .workspace_dir
-        .join("jj")
-        .join(&relative_path)
-        .join(&session);
-
-    println!("\nPaths calculated:");
-    println!("  Bare repo: {}", bare_repo_path.display());
-    println!("  JJ repo: {}", jj_repo_path.display());
-    println!("  New workspace: {}", workspace_path.display());
-
-    // Step 4: Verify jj repo exists
-    verify_jj_repo_exists(&jj_repo_path)?;
-
-    // Step 5: Create workspace
-    create_jj_workspace_at_path(&workspace_path, &jj_repo_path, &session)?;
-
-    println!(
-        "\nSuccessfully created workspace at: {}",
-        workspace_path.display()
-    );
-    Ok(())
-}
-
-/// Recursively search for bare repositories by directory name
-fn find_bare_repos_by_name(git_dir: &Path, search_name: &str) -> Result<Vec<PathBuf>> {
-    let mut matches = Vec::new();
-
-    fn visit_dirs(dir: &Path, search_name: &str, matches: &mut Vec<PathBuf>) -> Result<()> {
-        if !dir.is_dir() {
-            return Ok(());
-        }
-
-        // Check if current directory is a bare git repo
-        if dir.join("HEAD").exists() && dir.join("refs").exists() {
-            // Match on directory name only (not full path)
-            if let Some(dir_name) = dir.file_name() {
-                if dir_name.to_string_lossy() == search_name {
-                    matches.push(dir.to_path_buf());
-                }
-            }
-            // Don't recurse into git repos
-            return Ok(());
-        }
-
-        // Recurse into subdirectories
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                visit_dirs(&path, search_name, matches)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    visit_dirs(git_dir, search_name, &mut matches)?;
-    Ok(matches)
-}
-
-/// Find and select a bare repository
-fn find_and_select_bare_repo(config: &Config, repo_name: Option<&str>) -> Result<PathBuf> {
-    // Prompt for repo name if not provided
-    let name = match repo_name {
-        Some(n) => n.to_string(),
-        None => inquire::Text::new("Repository name:")
-            .with_help_message("Enter the name of the repository to create a workspace for")
-            .prompt()?,
-    };
-
-    // Search for matching repos
-    let matches = find_bare_repos_by_name(&config.git_dir, &name)?;
-
-    match matches.len() {
-        0 => bail!("No repository found with name '{}'", name),
-        1 => Ok(matches[0].clone()),
-        _ => {
-            // Multiple matches - prompt user to select
-            let options: Vec<String> = matches.iter().map(|p| p.display().to_string()).collect();
-
-            let selection =
-                inquire::Select::new("Multiple repositories found. Select one:", options)
-                    .prompt()?;
-
-            // Find the selected path
-            matches
-                .iter()
-                .find(|p| p.display().to_string() == selection)
-                .cloned()
-                .ok_or_eyre("Failed to find selected repository")
-        }
-    }
 }
 
 /// Get session name from argument or prompt
@@ -461,160 +192,6 @@ fn get_session_name(session_name: Option<&str>) -> Result<String> {
             Ok(name.trim().to_string())
         }
     }
-}
-
-/// Verify that a jj repository exists at the given path
-fn verify_jj_repo_exists(jj_repo_path: &Path) -> Result<()> {
-    if !jj_repo_path.exists() {
-        bail!(
-            "JJ repository does not exist at: {}\nPlease run 'ab init-jj' first.",
-            jj_repo_path.display()
-        );
-    }
-
-    let jj_dir = jj_repo_path.join(".jj");
-    if !jj_dir.exists() {
-        bail!(
-            "Directory exists but is not a JJ repository: {}\nMissing .jj directory",
-            jj_repo_path.display()
-        );
-    }
-
-    Ok(())
-}
-
-/// Create a new jj workspace at the specified path
-fn create_jj_workspace_at_path(
-    workspace_path: &Path,
-    jj_repo_path: &Path,
-    session: &str,
-) -> Result<()> {
-    println!("Creating JJ workspace:");
-    println!("  JJ repo: {}", jj_repo_path.display());
-    println!("  Workspace path: {}", workspace_path.display());
-    println!("  Session name: {}", session);
-
-    // create the workspace dir
-    fs::create_dir_all(workspace_path)?;
-
-    // Use jj workspace add command to create a new workspace
-    let output = std::process::Command::new("jj")
-        .current_dir(jj_repo_path)
-        .args(&[
-            "workspace",
-            "add",
-            "--name",
-            session,
-            path_to_str(workspace_path)?,
-        ])
-        .output()?;
-
-    if !output.status.success() {
-        bail!(
-            "Failed to create jj workspace: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    println!("  ✓ JJ workspace created successfully");
-
-    Ok(())
-}
-
-/// Create a new git worktree for an existing bare repository
-pub fn new_git_worktree(
-    config: &Config,
-    repo_name: Option<&str>,
-    session_name: Option<&str>,
-) -> Result<()> {
-    // Step 1: Search for bare repos and get selection
-    let bare_repo_path = find_and_select_bare_repo(config, repo_name)?;
-
-    // Step 2: Get session name (which will also be the branch name)
-    let session = get_session_name(session_name)?;
-
-    // Step 3: Calculate paths
-    let relative_path = calculate_relative_path(&config.git_dir, &bare_repo_path)?;
-    let workspace_path = config
-        .workspace_dir
-        .join("git")
-        .join(&relative_path)
-        .join(&session);
-
-    println!("\nPaths calculated:");
-    println!("  Bare repo: {}", bare_repo_path.display());
-    println!("  New worktree: {}", workspace_path.display());
-    println!("  Branch: {}", session);
-
-    // Step 4: Verify bare repo exists
-    if !bare_repo_path.exists() {
-        bail!(
-            "Bare repository does not exist at: {}",
-            bare_repo_path.display()
-        );
-    }
-
-    // Step 5: Create worktree with branch name matching session
-    create_git_worktree_at_path(&workspace_path, &bare_repo_path, &session)?;
-
-    println!(
-        "\nSuccessfully created git worktree at: {}",
-        workspace_path.display()
-    );
-    Ok(())
-}
-
-/// Create a new git worktree at the specified path
-fn create_git_worktree_at_path(
-    workspace_path: &Path,
-    bare_repo_path: &Path,
-    branch: &str,
-) -> Result<()> {
-    println!("Creating git worktree:");
-    println!("  Bare repo: {}", bare_repo_path.display());
-    println!("  Worktree path: {}", workspace_path.display());
-    println!("  Branch: {}", branch);
-
-    // Check if branch exists
-    let check_output = std::process::Command::new("git")
-        .args(&[
-            "--git-dir",
-            path_to_str(bare_repo_path)?,
-            "rev-parse",
-            "--verify",
-            &format!("refs/heads/{}", branch),
-        ])
-        .output()?;
-
-    let branch_exists = check_output.status.success();
-
-    // Create worktree using git worktree add
-    let mut args = vec!["--git-dir", path_to_str(bare_repo_path)?, "worktree", "add"];
-
-    // If branch doesn't exist, create it with -b flag
-    if !branch_exists {
-        args.push("-b");
-        args.push(branch);
-        args.push(path_to_str(workspace_path)?);
-        println!("  Creating new branch: {}", branch);
-    } else {
-        args.push(path_to_str(workspace_path)?);
-        args.push(branch);
-        println!("  Using existing branch: {}", branch);
-    }
-
-    let output = std::process::Command::new("git").args(&args).output()?;
-
-    if !output.status.success() {
-        bail!(
-            "Failed to create git worktree: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    println!("  Git worktree created successfully");
-
-    Ok(())
 }
 
 /// Remove all workspaces and repositories for a given repo ID
@@ -663,7 +240,7 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
     for (label, path) in &paths_to_remove {
         if path.exists() {
             println!("\nRemoving {}: {}", label, path.display());
-            fs::remove_dir_all(path)?;
+            std::fs::remove_dir_all(path)?;
             println!("  ✓ Removed");
         }
     }

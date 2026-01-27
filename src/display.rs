@@ -1,9 +1,8 @@
-use eyre::Result;
+use eyre::{OptionExt, Result};
 use std::path::Path;
 
 use crate::config::Config;
 use crate::path::RepoIdentifier;
-use crate::repo::get_repo_path;
 
 /// Display git worktrees for a repository
 pub fn display_git_worktrees(repo_id: &RepoIdentifier, config: &Config) -> Result<()> {
@@ -77,19 +76,21 @@ pub fn display_current_repo_info(config: &Config) -> Result<()> {
         }
     };
 
-    let repo_path = get_repo_path(&repo);
+    let repo_path = repo
+        .workdir()
+        .ok_or_eyre("Cannot work with a bare repository")?
+        .to_path_buf();
+
     println!("Current repo path:   {}", repo_path.display());
 
     let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
-    let bare_repo_path = repo_id.git_path(config);
-    println!("Bare repo location:  {}", bare_repo_path.display());
 
-    if bare_repo_path.exists() {
+    if repo_id.git_path(config).exists() {
         if let Err(e) = display_git_worktrees(&repo_id, config) {
             eprintln!("  Error displaying git worktrees: {}", e);
         }
     } else {
-        println!("(Bare repo does not exist yet - run 'ab export')");
+        println!("(Bare repo does not exist)");
     }
 
     if let Err(e) = display_jj_workspace_info(config, &repo_path) {

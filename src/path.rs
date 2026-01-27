@@ -1,5 +1,4 @@
 use eyre::{Result, eyre};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
@@ -119,7 +118,7 @@ impl Workspace {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RepoIdentifier {
     /// The relative path from any base directory (e.g., "myproject" or "work/project")
-    relative_path: PathBuf,
+    pub relative_path: PathBuf,
 }
 
 impl RepoIdentifier {
@@ -127,74 +126,6 @@ impl RepoIdentifier {
     pub fn from_repo_path(config: &Config, full_path: &Path) -> Result<Self> {
         let relative_path = calculate_relative_path(&config.base_repo_dir, full_path)?;
         Ok(Self { relative_path })
-    }
-
-    /// Create from a path within git_dir (bare repo location)
-    pub fn from_git_path(config: &Config, full_path: &Path) -> Result<Self> {
-        let relative_path = calculate_relative_path(&config.git_dir, full_path)?;
-        Ok(Self { relative_path })
-    }
-
-    /// Create from a path within jj_dir
-    pub fn from_jj_path(config: &Config, full_path: &Path) -> Result<Self> {
-        let relative_path = calculate_relative_path(&config.jj_dir, full_path)?;
-        Ok(Self { relative_path })
-    }
-
-    /// Create from a workspace path, auto-detecting type
-    /// Returns (identifier, workspace_type, session_name)
-    pub fn from_workspace_path(
-        config: &Config,
-        full_path: &Path,
-    ) -> Result<(Self, WorkspaceType, String)> {
-        // Strip workspace_dir to get relative portion
-        let relative = calculate_relative_path(&config.workspace_dir, full_path)?;
-
-        // First component should be "git" or "jj"
-        let mut components: Vec<_> = relative.components().collect();
-        if components.is_empty() {
-            return Err(eyre!(
-                "Workspace path is empty after stripping workspace_dir"
-            ));
-        }
-
-        let workspace_type = match components[0].as_os_str().to_str() {
-            Some("git") => WorkspaceType::Git,
-            Some("jj") => WorkspaceType::Jj,
-            Some(other) => {
-                return Err(eyre!(
-                    "Expected 'git' or 'jj' as first component, got: {}",
-                    other
-                ));
-            }
-            None => return Err(eyre!("Invalid UTF-8 in workspace path component")),
-        };
-
-        // Remove first component (git/jj)
-        components.remove(0);
-
-        if components.is_empty() {
-            return Err(eyre!("No path after workspace type in workspace path"));
-        }
-
-        // Last component is the session name
-        let session = components
-            .pop()
-            .ok_or_else(|| eyre!("No session name in workspace path"))?
-            .as_os_str()
-            .to_str()
-            .ok_or_else(|| eyre!("Session name contains invalid UTF-8"))?
-            .to_string();
-
-        // What's left is the relative_path
-        let relative_path: PathBuf = components.iter().collect();
-
-        Ok((Self { relative_path }, workspace_type, session))
-    }
-
-    /// Get the full path in base_repo_dir
-    pub fn repo_path(&self, config: &Config) -> PathBuf {
-        config.base_repo_dir.join(&self.relative_path)
     }
 
     /// Get the full path in git_dir (bare repo location)
@@ -230,16 +161,6 @@ impl RepoIdentifier {
             WorkspaceType::Git => self.git_workspace_path(config, session),
             WorkspaceType::Jj => self.jj_workspace_path(config, session),
         }
-    }
-
-    /// Get the base directory containing all JJ workspaces for this repo
-    pub fn jj_workspace_dir(&self, config: &Config) -> PathBuf {
-        config.jj_dir.join(&self.relative_path)
-    }
-
-    /// Get the base directory containing all git worktrees for this repo
-    pub fn git_worktree_dir(&self, config: &Config) -> PathBuf {
-        config.workspace_dir.join("git").join(&self.relative_path)
     }
 
     /// Get the underlying relative path
@@ -503,67 +424,12 @@ mod tests {
     }
 
     #[test]
-    fn test_repo_identifier_from_git_path() {
-        let config = make_test_config();
-        let full_path = PathBuf::from("/mnt/git/work/project");
-
-        let id = RepoIdentifier::from_git_path(&config, &full_path).unwrap();
-        assert_eq!(id.relative_path(), Path::new("work/project"));
-    }
-
-    #[test]
-    fn test_repo_identifier_from_jj_path() {
-        let config = make_test_config();
-        let full_path = PathBuf::from("/mnt/jj/myproject");
-
-        let id = RepoIdentifier::from_jj_path(&config, &full_path).unwrap();
-        assert_eq!(id.relative_path(), Path::new("myproject"));
-    }
-
-    #[test]
-    fn test_repo_identifier_from_workspace_path_jj() {
-        let config = make_test_config();
-        let full_path = PathBuf::from("/mnt/workspace/jj/work/project/session1");
-
-        let (id, workspace_type, session) =
-            RepoIdentifier::from_workspace_path(&config, &full_path).unwrap();
-        assert_eq!(id.relative_path(), Path::new("work/project"));
-        assert_eq!(workspace_type, WorkspaceType::Jj);
-        assert_eq!(session, "session1");
-    }
-
-    #[test]
-    fn test_repo_identifier_from_workspace_path_git() {
-        let config = make_test_config();
-        let full_path = PathBuf::from("/mnt/workspace/git/myproject/my-session");
-
-        let (id, workspace_type, session) =
-            RepoIdentifier::from_workspace_path(&config, &full_path).unwrap();
-        assert_eq!(id.relative_path(), Path::new("myproject"));
-        assert_eq!(workspace_type, WorkspaceType::Git);
-        assert_eq!(session, "my-session");
-    }
-
-    #[test]
-    fn test_repo_identifier_from_workspace_path_invalid_type() {
-        let config = make_test_config();
-        let full_path = PathBuf::from("/mnt/workspace/invalid/myproject/session1");
-
-        let result = RepoIdentifier::from_workspace_path(&config, &full_path);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_repo_identifier_path_builders() {
         let config = make_test_config();
         let id = RepoIdentifier {
             relative_path: PathBuf::from("work/project"),
         };
 
-        assert_eq!(
-            id.repo_path(&config),
-            PathBuf::from("/home/user/repos/work/project")
-        );
         assert_eq!(id.git_path(&config), PathBuf::from("/mnt/git/work/project"));
         assert_eq!(id.jj_path(&config), PathBuf::from("/mnt/jj/work/project"));
         assert_eq!(
@@ -574,43 +440,6 @@ mod tests {
             id.jj_workspace_path(&config, "session2"),
             PathBuf::from("/mnt/workspace/jj/work/project/session2")
         );
-    }
-
-    #[test]
-    fn test_repo_identifier_roundtrip_repo_path() {
-        let config = make_test_config();
-        let original_path = PathBuf::from("/home/user/repos/myproject");
-
-        let id = RepoIdentifier::from_repo_path(&config, &original_path).unwrap();
-        let reconstructed = id.repo_path(&config);
-
-        assert_eq!(original_path, reconstructed);
-    }
-
-    #[test]
-    fn test_repo_identifier_roundtrip_git_path() {
-        let config = make_test_config();
-        let original_path = PathBuf::from("/mnt/git/work/project");
-
-        let id = RepoIdentifier::from_git_path(&config, &original_path).unwrap();
-        let reconstructed = id.git_path(&config);
-
-        assert_eq!(original_path, reconstructed);
-    }
-
-    #[test]
-    fn test_repo_identifier_roundtrip_workspace_path() {
-        let config = make_test_config();
-        let original_path = PathBuf::from("/mnt/workspace/jj/work/project/session1");
-
-        let (id, workspace_type, session) =
-            RepoIdentifier::from_workspace_path(&config, &original_path).unwrap();
-        let reconstructed = match workspace_type {
-            WorkspaceType::Jj => id.jj_workspace_path(&config, &session),
-            WorkspaceType::Git => id.git_workspace_path(&config, &session),
-        };
-
-        assert_eq!(original_path, reconstructed);
     }
 
     #[test]
