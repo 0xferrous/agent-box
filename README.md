@@ -56,6 +56,10 @@ home_relative = ["~/.config/git"]
 [runtime.mounts.rw]
 absolute = []
 home_relative = ["~/.local/share"]
+
+[runtime.mounts.o]  # Overlay mounts (Podman only)
+absolute = []
+home_relative = []
 ```
 
 All paths support `~` expansion and will be canonicalized.
@@ -67,7 +71,12 @@ Agent Box supports two container runtimes:
 - **Docker** (default): Set `backend = "docker"` or omit the `backend` key
 - **Podman**: Set `backend = "podman"`
 
-The main difference is that Podman uses `--userns keep-id` for better user namespace mapping, while Docker uses direct `--user` mapping.
+**Differences:**
+- Podman uses `--userns keep-id` for better user namespace mapping
+- Podman supports overlay mounts (`mounts.o`) with the `:O` flag
+- Docker uses direct `--user` mapping and does not support overlay mounts
+
+**Overlay mounts** allow containers to write to a mounted directory without affecting the host. Changes are stored in a temporary overlay layer that is discarded when the container exits.
 
 ## Usage
 

@@ -87,6 +87,17 @@ pub fn build_container_config(
         }
     }
 
+    // Check for overlay mounts and validate backend
+    let has_overlay_mounts = !config.runtime.mounts.o.absolute.is_empty()
+        || !config.runtime.mounts.o.home_relative.is_empty();
+
+    if has_overlay_mounts && config.runtime.backend != "podman" {
+        return Err(eyre::eyre!(
+            "Overlay mounts are only supported with Podman backend, but '{}' is configured",
+            config.runtime.backend
+        ));
+    }
+
     add_config_mounts(config, &mut binds)?;
 
     let uid = nix::unistd::getuid().as_raw();
@@ -130,6 +141,7 @@ fn add_config_mounts(config: &Config, binds: &mut Vec<String>) -> Result<()> {
     let mount_path_custom = |src: &str, dst: &str, mode: &str| format!("{src}:{dst}:{mode}");
     let mount_path_ro = |path: &str| mount_path(path, "ro");
     let mount_path_rw = |path: &str| mount_path(path, "rw");
+    let mount_path_overlay = |path: &str| format!("{path}:{path}:O");
 
     // Process read-only absolute mounts
     for dir in &config.runtime.mounts.ro.absolute {
@@ -189,6 +201,36 @@ fn add_config_mounts(config: &Config, binds: &mut Vec<String>) -> Result<()> {
         }
 
         binds.push(mount_path_custom(&host_path, &container_path, "rw"));
+    }
+
+    // Process overlay absolute mounts
+    for dir in &config.runtime.mounts.o.absolute {
+        let expanded = crate::path::expand_path(&PathBuf::from(dir))
+            .wrap_err(format!("Failed to expand o.absolute path: {}", dir))?;
+
+        if !expanded.exists() {
+            return Err(eyre::eyre!(
+                "Overlay absolute mount does not exist: {}",
+                dir
+            ));
+        }
+
+        binds.push(mount_path_overlay(&pb_to_str(&expanded)));
+    }
+
+    // Process overlay home_relative mounts
+    for dir in &config.runtime.mounts.o.home_relative {
+        let (host_path, container_path) = resolve_home_relative_mount(dir)?;
+
+        let host_pathbuf = PathBuf::from(&host_path);
+        if !host_pathbuf.exists() {
+            return Err(eyre::eyre!(
+                "Overlay home_relative mount does not exist: {}",
+                dir
+            ));
+        }
+
+        binds.push(mount_path_custom(&host_path, &container_path, "O"));
     }
 
     Ok(())

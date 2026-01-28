@@ -19,6 +19,8 @@ pub struct MountsConfig {
     pub ro: MountPaths,
     #[serde(default)]
     pub rw: MountPaths,
+    #[serde(default)]
+    pub o: MountPaths,
 }
 
 #[derive(Debug, Deserialize, Default)]
