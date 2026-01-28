@@ -1,0 +1,3 @@
+- always keep the docs and readme in sync with the code changes
+- use `nix develop --command` to run the commands in the flake's devshell
+- always run `cargo fmt` to ensure the code is formatted correctly

@@ -4,13 +4,6 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::path::{RepoIdentifier, WorkspaceType, expand_path};
 
-/// Mount mode for one-off containers
-#[derive(Debug, Clone, Copy)]
-pub enum MountMode {
-    Ro,
-    Rw,
-}
-
 /// Configuration for running a container
 #[derive(Debug)]
 pub struct ContainerConfig {
@@ -22,14 +15,28 @@ pub struct ContainerConfig {
     pub env: Vec<String>,
 }
 
+/// Spawn a container for a workspace.
+/// - If `local` is true, source and workspace are the same (current working directory)
+/// - If `local` is false, workspace is separate from source repo
 pub async fn spawn_container(
     config: &Config,
     repo_id: &RepoIdentifier,
     wtype: WorkspaceType,
-    session: &str,
+    session: Option<&str>,
+    local: bool,
     entrypoint_override: Option<&str>,
 ) -> Result<()> {
-    let workspace_path = repo_id.workspace_path(config, wtype, session);
+    let (workspace_path, source_path) = if local {
+        // Local mode: source and workspace are the same
+        let path = repo_id.source_path(config);
+        (path.clone(), path)
+    } else {
+        // Session mode: workspace is separate from source
+        let session = session.ok_or_else(|| eyre::eyre!("Session required for non-local spawn"))?;
+        let workspace_path = repo_id.workspace_path(config, wtype, session);
+        let source_path = repo_id.source_path(config);
+        (workspace_path, source_path)
+    };
 
     if !workspace_path.exists() {
         return Err(eyre::eyre!(
@@ -39,70 +46,16 @@ pub async fn spawn_container(
     }
 
     // Build container configuration
-    let container_config =
-        build_container_config(config, repo_id, wtype, &workspace_path, entrypoint_override)?;
+    let container_config = build_container_config(
+        config,
+        &workspace_path,
+        &source_path,
+        local,
+        entrypoint_override,
+    )?;
 
     // Run the container
     run_container(&container_config).await
-}
-
-/// Spawn a one-off container with the given directory mounted
-pub async fn spawn_oneoff_container(
-    config: &Config,
-    dir: &PathBuf,
-    mode: MountMode,
-    entrypoint_override: Option<&str>,
-) -> Result<()> {
-    let container_config = build_oneoff_config(config, dir, mode, entrypoint_override)?;
-    run_container(&container_config).await
-}
-
-/// Build container configuration for a one-off container
-fn build_oneoff_config(
-    config: &Config,
-    dir: &PathBuf,
-    mode: MountMode,
-    entrypoint_override: Option<&str>,
-) -> Result<ContainerConfig> {
-    let dir_str = dir
-        .canonicalize()
-        .wrap_err("Failed to canonicalize directory")?
-        .to_string_lossy()
-        .to_string();
-
-    let mode_str = match mode {
-        MountMode::Ro => "ro",
-        MountMode::Rw => "rw",
-    };
-
-    let mut binds = vec![format!("{}:{}:{}", dir_str, dir_str, mode_str)];
-    add_config_mounts(config, &mut binds)?;
-
-    let uid = nix::unistd::getuid().as_raw();
-    let gid = nix::unistd::getgid().as_raw();
-
-    let username = std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_else(|_| "user".to_string());
-
-    let entrypoint = entrypoint_override
-        .map(|s| vec![s.to_string()])
-        .or_else(|| config.docker.entrypoint.clone());
-
-    let mut env = vec![
-        format!("USER={}", username),
-        format!("HOME=/home/{}", username),
-    ];
-    env.extend(config.docker.env.iter().cloned());
-
-    Ok(ContainerConfig {
-        image: config.docker.image.clone(),
-        entrypoint,
-        user: format!("{}:{}", uid, gid),
-        working_dir: dir_str,
-        mounts: binds,
-        env,
-    })
 }
 
 /// Add config-defined mounts to the binds vector
@@ -181,12 +134,15 @@ fn add_config_mounts(config: &Config, binds: &mut Vec<String>) -> Result<()> {
     Ok(())
 }
 
-/// Build container configuration from workspace and config
+/// Build container configuration from workspace and source paths
+/// - workspace_path: the directory to mount as working directory (rw)
+/// - source_path: the source repo to mount .git/.jj from
+/// - local: if true, workspace and source are the same, so don't double-mount
 fn build_container_config(
     config: &Config,
-    repo_id: &RepoIdentifier,
-    _wtype: WorkspaceType,
     workspace_path: &PathBuf,
+    source_path: &PathBuf,
+    local: bool,
     entrypoint_override: Option<&str>,
 ) -> Result<ContainerConfig> {
     let pb_to_str = |pb: &PathBuf| {
@@ -197,20 +153,22 @@ fn build_container_config(
     };
     let mount_path_rw = |path: &str| format!("{path}:{path}:rw");
 
-    let workspace_path_str = pb_to_str(&workspace_path);
-
-    // Mount source repo's .git and .jj directories (not the whole source)
-    let source_path = repo_id.source_path(config);
-    let source_git = source_path.join(".git");
-    let source_jj = source_path.join(".jj");
+    let workspace_path_str = pb_to_str(workspace_path);
 
     let mut binds = vec![mount_path_rw(&workspace_path_str)];
 
-    if source_git.exists() {
-        binds.push(mount_path_rw(&pb_to_str(&source_git)));
-    }
-    if source_jj.exists() {
-        binds.push(mount_path_rw(&pb_to_str(&source_jj)));
+    // Mount source repo's .git and .jj directories only if not local
+    // (in local mode, workspace IS the source, so they're already included)
+    if !local {
+        let source_git = source_path.join(".git");
+        let source_jj = source_path.join(".jj");
+
+        if source_git.exists() {
+            binds.push(mount_path_rw(&pb_to_str(&source_git)));
+        }
+        if source_jj.exists() {
+            binds.push(mount_path_rw(&pb_to_str(&source_jj)));
+        }
     }
 
     add_config_mounts(config, &mut binds)?;

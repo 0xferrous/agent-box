@@ -8,7 +8,7 @@ mod repo;
 
 use config::load_config_or_exit;
 use display::info;
-use docker::{MountMode, spawn_container, spawn_oneoff_container};
+use docker::spawn_container;
 use repo::{clean_repos, new_workspace, remove_repo, resolve_repo_id};
 
 use crate::path::WorkspaceType;
@@ -41,8 +41,17 @@ enum Commands {
     },
     /// Spawn a new docker container for a workspace
     Spawn {
-        /// Session name
-        session: String,
+        /// Session name (mutually exclusive with --local)
+        #[arg(
+            long,
+            short,
+            conflicts_with = "local",
+            required_unless_present = "local"
+        )]
+        session: Option<String>,
+        /// Use current directory as both source and workspace (mutually exclusive with --session)
+        #[arg(long, short, conflicts_with = "session")]
+        local: bool,
         /// Repository identifier (defaults to current directory's git repo)
         #[arg(long, short)]
         repo: Option<String>,
@@ -54,7 +63,7 @@ enum Commands {
         #[arg(long, conflicts_with = "git", default_value_t = true)]
         jj: bool,
         /// Create workspace if it doesn't exist (equivalent to running `ab new` first)
-        #[arg(long, short)]
+        #[arg(long, short, conflicts_with = "local")]
         new: bool,
     },
     /// Remove all workspaces and repositories for a given repo ID
@@ -70,15 +79,6 @@ enum Commands {
     },
     /// Interactively clean repositories and their artifacts
     Clean,
-    /// Spawn a one-off container with the current directory mounted
-    Oneoff {
-        /// Mount as read-write (default is read-only)
-        #[arg(short = 'w', long)]
-        write: bool,
-        /// Override entrypoint from config
-        #[arg(long)]
-        entrypoint: Option<String>,
-    },
 }
 
 fn main() {
@@ -120,6 +120,7 @@ fn main() {
         Commands::Spawn {
             repo,
             session,
+            local,
             entrypoint,
             git,
             jj: _,
@@ -131,9 +132,12 @@ fn main() {
                 WorkspaceType::Jj
             };
 
-            // Create workspace first if --new flag is set
+            // Create workspace first if --new flag is set (only valid for session mode)
             if create_new {
-                if let Err(e) = new_workspace(&config, repo.as_deref(), Some(&session), wtype) {
+                let session_name = session
+                    .as_ref()
+                    .expect("session required when --new is set");
+                if let Err(e) = new_workspace(&config, repo.as_deref(), Some(session_name), wtype) {
                     eprintln!("Error creating new workspace: {}", e);
                     std::process::exit(1);
                 }
@@ -153,7 +157,8 @@ fn main() {
                 &config,
                 &repo_id,
                 wtype,
-                &session,
+                session.as_deref(),
+                local,
                 entrypoint.as_deref(),
             )) {
                 eprintln!("Error spawning container: {}", e);
@@ -214,20 +219,6 @@ fn main() {
         Commands::Clean => {
             if let Err(e) = clean_repos(&config) {
                 eprintln!("Error cleaning repositories: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Commands::Oneoff { write, entrypoint } => {
-            let cwd = std::env::current_dir().expect("Failed to get current directory");
-            let mode = if write { MountMode::Rw } else { MountMode::Ro };
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            if let Err(e) = runtime.block_on(spawn_oneoff_container(
-                &config,
-                &cwd,
-                mode,
-                entrypoint.as_deref(),
-            )) {
-                eprintln!("Error spawning container: {}", e);
                 std::process::exit(1);
             }
         }
