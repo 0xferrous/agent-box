@@ -65,14 +65,6 @@ This shows:
 - JJ workspace status
 - All jj workspaces found
 
-### List All Repositories
-
-List all repositories and show which ones have git/jj repos and their workspaces:
-
-```bash
-ab ls
-```
-
 ### Create a New Workspace
 
 Create a new jj workspace (default) or git worktree:

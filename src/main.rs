@@ -9,7 +9,7 @@ mod repo;
 use config::load_config_or_exit;
 use display::info;
 use docker::{MountMode, spawn_container, spawn_oneoff_container};
-use repo::{clean_repos, list_repos, new_workspace, remove_repo, resolve_repo_id};
+use repo::{clean_repos, new_workspace, remove_repo, resolve_repo_id};
 
 use crate::path::WorkspaceType;
 
@@ -25,8 +25,6 @@ struct Cli {
 enum Commands {
     /// Show repository information and list workspaces
     Info,
-    /// List all repositories and show which ones have git/jj repos
-    Ls,
     /// Create a new workspace (jj or git worktree)
     New {
         /// Repository name (defaults to current directory's git repo)
@@ -91,12 +89,6 @@ fn main() {
         Commands::Info => {
             if let Err(e) = info(&config) {
                 eprintln!("Error getting repository info: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Commands::Ls => {
-            if let Err(e) = list_repos(&config) {
-                eprintln!("Error listing repositories: {}", e);
                 std::process::exit(1);
             }
         }

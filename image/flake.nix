@@ -76,6 +76,7 @@
             lsof
             unixtools.netstat
             gnupg
+            tokei
 
             aiTools.pi
             aiTools.claude-code
