@@ -27,6 +27,7 @@ Agent Box solves this by:
   - [Spawn a Docker Container](#spawn-a-docker-container)
 - [How It Works](#how-it-works)
 - [How-To](#how-to)
+  - [Forward GPG Agent to Containers](#forward-gpg-agent-to-containers)
   - [Share Host's Nix Store with Containers](#share-hosts-nix-store-with-containers)
 - [Requirements](#requirements)
 
