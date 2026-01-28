@@ -69,26 +69,51 @@ impl RepoIdentifier {
         &self.relative_path
     }
 
-    /// Try to locate a repository identifier by walking the base_repo_dir and matching against a path-like string.
+    /// Find all repository identifiers matching a search string.
     /// The search string can be a partial path like "fr/agent-box" or "agent-box".
-    /// Returns the first matching RepoIdentifier, or None if no match is found.
-    pub fn locate(config: &Config, search: &str) -> Result<Option<Self>> {
+    /// Returns all matching RepoIdentifiers.
+    pub fn find_matching(config: &Config, search: &str) -> Result<Vec<Self>> {
         let search_path = Path::new(search);
 
         if !config.base_repo_dir.exists() {
-            return Ok(None);
+            return Ok(Vec::new());
         }
 
+        let mut matches = Vec::new();
+
+        let is_repo = |path: &Path| path.join(".git").exists() || path.join(".jj").exists();
+
         // Walk the base_repo_dir to find all repos (with .git or .jj)
-        for entry in walkdir::WalkDir::new(&config.base_repo_dir)
+        // Skip descending into directories that are already repos
+        let walker = walkdir::WalkDir::new(&config.base_repo_dir)
             .follow_links(false)
             .into_iter()
-            .filter_map(|e| e.ok())
-        {
+            .filter_entry(|e| {
+                let path = e.path();
+                // Always allow the base dir itself
+                if path == config.base_repo_dir {
+                    return true;
+                }
+                // Skip .git and .jj directories
+                if let Some(name) = path.file_name() {
+                    if name == ".git" || name == ".jj" {
+                        return false;
+                    }
+                }
+                // If parent is a repo, don't descend into children
+                if let Some(parent) = path.parent() {
+                    if parent != config.base_repo_dir && is_repo(parent) {
+                        return false;
+                    }
+                }
+                true
+            });
+
+        for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
 
             // Check if this looks like a repo (has .git or .jj directory)
-            if !path.is_dir() || (!path.join(".git").exists() && !path.join(".jj").exists()) {
+            if !path.is_dir() || !is_repo(path) {
                 continue;
             }
 
@@ -100,19 +125,20 @@ impl RepoIdentifier {
             // Check if this matches the search string
             // Match if the relative path ends with the search path or equals it
             if relative_path == search_path || relative_path.ends_with(search_path) {
-                return Ok(Some(Self {
+                matches.push(Self {
                     relative_path: relative_path.to_path_buf(),
-                }));
+                });
             }
         }
 
-        Ok(None)
+        Ok(matches)
     }
 
     /// Helper function to discover repositories in a directory based on a filter predicate
+    /// Stops descending into directories that are already repos.
     fn discover_repos_in_dir<F>(base_dir: &Path, is_repo: F) -> Result<Vec<Self>>
     where
-        F: Fn(&Path) -> bool,
+        F: Fn(&Path) -> bool + Copy,
     {
         let mut repos = Vec::new();
 
@@ -121,11 +147,32 @@ impl RepoIdentifier {
         }
 
         // Walk the directory to find all repos matching the predicate
-        for entry in walkdir::WalkDir::new(base_dir)
+        // Skip descending into directories that are already repos
+        let walker = walkdir::WalkDir::new(base_dir)
             .follow_links(false)
             .into_iter()
-            .filter_map(|e| e.ok())
-        {
+            .filter_entry(move |e| {
+                let path = e.path();
+                // Always allow the base dir itself
+                if path == base_dir {
+                    return true;
+                }
+                // Skip .git and .jj directories
+                if let Some(name) = path.file_name() {
+                    if name == ".git" || name == ".jj" {
+                        return false;
+                    }
+                }
+                // If parent is a repo, don't descend into children
+                if let Some(parent) = path.parent() {
+                    if parent != base_dir && is_repo(parent) {
+                        return false;
+                    }
+                }
+                true
+            });
+
+        for entry in walker.filter_map(|e| e.ok()) {
             let path = entry.path();
 
             if !path.is_dir() || !is_repo(path) {
@@ -330,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn test_locate_exact_match() {
+    fn test_find_matching_exact_match() {
         use crate::config::DockerConfig;
 
         let temp_dir = std::env::temp_dir().join(format!("ab-test-locate-{}", std::process::id()));
@@ -352,17 +399,16 @@ mod tests {
         };
 
         // Test exact match
-        let result = RepoIdentifier::locate(&config, "fr/agent-box").unwrap();
-        assert!(result.is_some());
-        let id = result.unwrap();
-        assert_eq!(id.relative_path(), Path::new("fr/agent-box"));
+        let matches = RepoIdentifier::find_matching(&config, "fr/agent-box").unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].relative_path(), Path::new("fr/agent-box"));
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
-    fn test_locate_partial_match() {
+    fn test_find_matching_partial_match() {
         use crate::config::DockerConfig;
 
         let temp_dir =
@@ -385,17 +431,16 @@ mod tests {
         };
 
         // Test partial match (searching for "agent-box" should match "fr/agent-box")
-        let result = RepoIdentifier::locate(&config, "agent-box").unwrap();
-        assert!(result.is_some());
-        let id = result.unwrap();
-        assert_eq!(id.relative_path(), Path::new("fr/agent-box"));
+        let matches = RepoIdentifier::find_matching(&config, "agent-box").unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].relative_path(), Path::new("fr/agent-box"));
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
-    fn test_locate_no_match() {
+    fn test_find_matching_no_match() {
         use crate::config::DockerConfig;
 
         let temp_dir =
@@ -418,19 +463,19 @@ mod tests {
         };
 
         // Test no match
-        let result = RepoIdentifier::locate(&config, "nonexistent").unwrap();
-        assert!(result.is_none());
+        let matches = RepoIdentifier::find_matching(&config, "nonexistent").unwrap();
+        assert!(matches.is_empty());
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();
     }
 
     #[test]
-    fn test_locate_base_repo_dir_not_exists() {
+    fn test_find_matching_base_repo_dir_not_exists() {
         let config = make_test_config();
 
         // Test when base_repo_dir doesn't exist
-        let result = RepoIdentifier::locate(&config, "anything").unwrap();
-        assert!(result.is_none());
+        let matches = RepoIdentifier::find_matching(&config, "anything").unwrap();
+        assert!(matches.is_empty());
     }
 }

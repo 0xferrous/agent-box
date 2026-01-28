@@ -9,7 +9,7 @@ mod repo;
 use config::load_config_or_exit;
 use display::info;
 use docker::spawn_container;
-use repo::{clean_repos, new_workspace, remove_repo, resolve_repo_id};
+use repo::{clean_repos, locate_repo, new_workspace, remove_repo, resolve_repo_id};
 
 use crate::path::WorkspaceType;
 
@@ -79,6 +79,21 @@ enum Commands {
     },
     /// Interactively clean repositories and their artifacts
     Clean,
+    /// Debug commands (hidden from main help)
+    #[command(hide = true)]
+    Dbg {
+        #[command(subcommand)]
+        command: DbgCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum DbgCommands {
+    /// Locate a repository by partial path match
+    Locate {
+        /// Repository search string (e.g., "agent-box" or "fr/agent-box")
+        repo: String,
+    },
 }
 
 fn main() {
@@ -170,15 +185,9 @@ fn main() {
             dry_run,
             force,
         } => {
-            use path::RepoIdentifier;
-
             // Locate the repository identifier
-            let repo_id = match RepoIdentifier::locate(&config, &repo) {
-                Ok(Some(id)) => id,
-                Ok(None) => {
-                    eprintln!("Error: Could not find repository matching '{}'", repo);
-                    std::process::exit(1);
-                }
+            let repo_id = match locate_repo(&config, &repo) {
+                Ok(id) => id,
                 Err(e) => {
                     eprintln!("Error locating repository: {}", e);
                     std::process::exit(1);
@@ -222,5 +231,16 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        Commands::Dbg { command } => match command {
+            DbgCommands::Locate { repo } => match locate_repo(&config, &repo) {
+                Ok(repo_id) => {
+                    println!("{}", repo_id.relative_path().display());
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            },
+        },
     }
 }
