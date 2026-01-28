@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(tmux send-keys:*)",
-      "Bash(tmux capture-pane:*)"
-    ]
-  }
-}
