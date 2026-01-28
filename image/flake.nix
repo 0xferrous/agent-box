@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    nix.url = "github:nixos/nix/2.33.1";
+    nix.url = "github:0xferrous/nix/extra-args";
     nix-ai-tools.url = "github:numtide/nix-ai-tools";
   };
 
@@ -23,6 +23,8 @@
           gname = id.gname;
           aiTools = nix-ai-tools.packages.${system};
 
+          userHome = if uid == 0 then "/root" else "/home/${uname}";
+
           buildImage = { packages ? [] } : pkgs.callPackage "${nix}/docker.nix" {
             name = "agent-box";
             tag = "latest";
@@ -30,6 +32,12 @@
             inherit uid gid uname gname;
 
             extraPkgs = packages;
+
+            # extraFakeRootCommands = ''
+            #   mkdir -p .${userHome}/.gnupg
+            #   chmod 700 .${userHome}/.gnupg
+            #   chown ${toString uid}:${toString gid} .${userHome}/.gnupg
+            # '';
           };
 
           # Default package list

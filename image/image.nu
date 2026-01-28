@@ -16,6 +16,7 @@ def main [] {
     print $"building image with uid: ($uid) gid: ($gid)"
     nix build
     docker load -i ./result
+    podman load -i ./result
 
-    docker run --rm -ti agent-box:latest bash
+    # docker run --rm -ti agent-box:latest bash
 }
