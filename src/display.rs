@@ -1,117 +1,99 @@
-use eyre::{OptionExt, Result};
-use std::path::Path;
+use eyre::Result;
 
 use crate::config::Config;
 use crate::path::RepoIdentifier;
 
-/// Display git worktrees for a repository
-pub fn display_git_worktrees(repo_id: &RepoIdentifier, config: &Config) -> Result<()> {
-    println!("\n=== Git Worktrees ===\n");
-
-    let worktrees = repo_id.git_worktrees(config)?;
-
-    if worktrees.is_empty() {
-        println!("  (No worktrees found)");
-        return Ok(());
-    }
-
-    for worktree in worktrees {
-        if worktree.is_main {
-            println!("{} (main)", worktree.path.display());
-        } else {
-            let locked = if worktree.is_locked { " [locked]" } else { "" };
-            let id = worktree.id.as_deref().unwrap_or("unknown");
-            println!("{} [{}]{}", worktree.path.display(), id, locked);
-        }
-    }
-
-    Ok(())
-}
-
-/// Display JJ workspace information for current repository
-pub fn display_jj_workspace_info(config: &Config, repo_path: &Path) -> Result<()> {
-    let repo_id = RepoIdentifier::from_repo_path(config, repo_path)?;
-    let source_path = repo_id.source_path(config);
-    let jj_dir = source_path.join(".jj");
-
-    println!("\n=== JJ Workspace ===\n");
-    println!("JJ workspace path:   {}", source_path.display());
-
-    if jj_dir.exists() {
-        println!("Status:              Initialized");
-    } else {
-        println!("Status:              Not initialized");
-    }
-
-    Ok(())
-}
-
-/// Display all JJ workspaces for a specific repository
-pub fn display_all_jj_workspaces(config: &Config, repo_path: &Path) -> Result<()> {
-    println!("\n=== All JJ Workspaces ===\n");
-
-    let repo_id = RepoIdentifier::from_repo_path(config, repo_path)?;
-    let workspace_names = repo_id.jj_workspaces(config)?;
-
-    if workspace_names.is_empty() {
-        println!("  (No JJ workspaces found)");
-        return Ok(());
-    }
-
-    for workspace_name in workspace_names {
-        println!("  {}", workspace_name);
-    }
-
-    Ok(())
-}
-
-/// Display current repository information
-pub fn display_current_repo_info(config: &Config) -> Result<()> {
-    println!("\n=== Current Repository ===\n");
-
-    let repo = match gix::discover(&std::env::current_dir()?) {
-        Ok(repo) => repo,
-        Err(_) => {
-            println!("Not in a git repository");
-            return Ok(());
-        }
-    };
-
-    let repo_path = repo
-        .workdir()
-        .ok_or_eyre("Cannot work with a bare repository")?
-        .to_path_buf();
-
-    println!("Current repo path:   {}", repo_path.display());
-
-    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
-
-    if repo_id.source_path(config).join(".git").exists() {
-        if let Err(e) = display_git_worktrees(&repo_id, config) {
-            eprintln!("  Error displaying git worktrees: {}", e);
-        }
-    } else {
-        println!("(Git repo not initialized)");
-    }
-
-    if let Err(e) = display_jj_workspace_info(config, &repo_path) {
-        eprintln!("\nCould not display JJ workspace info: {}", e);
-    }
-
-    if let Err(e) = display_all_jj_workspaces(config, &repo_path) {
-        eprintln!("\nCould not display JJ workspaces: {}", e);
-    }
-
-    Ok(())
-}
+// ANSI color codes
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const CYAN: &str = "\x1b[36m";
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const MAGENTA: &str = "\x1b[35m";
 
 /// Show repository information and list workspaces
 pub fn info(config: &Config) -> Result<()> {
-    println!("=== Agent Box Configuration ===\n");
-    println!("Workspace dir:       {}", config.workspace_dir.display());
-    println!("Base repo dir:       {}", config.base_repo_dir.display());
+    let cwd = std::env::current_dir()?;
 
-    display_current_repo_info(config)?;
+    let repo = gix::discover(&cwd).ok();
+    let repo_path = repo
+        .as_ref()
+        .and_then(|r| r.workdir().map(|p| p.to_path_buf()));
+
+    let Some(repo_path) = repo_path else {
+        eprintln!("Not in a git repository");
+        return Ok(());
+    };
+
+    let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
+
+    // Git worktrees
+    println!("{BOLD}Git Worktrees:{RESET}");
+    match repo_id.git_worktrees(config) {
+        Ok(worktrees) if worktrees.is_empty() => {
+            println!("  {DIM}(none){RESET}");
+        }
+        Ok(worktrees) => {
+            for wt in worktrees {
+                let path = wt.path.display();
+                if wt.is_main {
+                    println!("  {CYAN}{path}{RESET} {DIM}(main){RESET}");
+                } else {
+                    let id = wt.id.as_deref().unwrap_or("?");
+                    let locked = if wt.is_locked {
+                        format!(" {YELLOW}[locked]{RESET}")
+                    } else {
+                        String::new()
+                    };
+                    println!("  {CYAN}{path}{RESET} {GREEN}[{id}]{RESET}{locked}");
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("  {DIM}Error: {e}{RESET}");
+        }
+    }
+
+    println!();
+
+    // JJ workspaces
+    println!("{BOLD}JJ Workspaces:{RESET}");
+    match repo_id.jj_workspaces(config) {
+        Ok(workspaces) if workspaces.is_empty() => {
+            println!("  {DIM}(none){RESET}");
+        }
+        Ok(workspaces) => {
+            // Find max name length for alignment
+            let max_name_len = workspaces.iter().map(|w| w.name.len()).max().unwrap_or(0);
+
+            for ws in workspaces {
+                let name = &ws.name;
+                let commit = &ws.commit_id;
+                let padding = " ".repeat(max_name_len - name.len());
+
+                let desc = if ws.description.is_empty() {
+                    format!("{DIM}(no description){RESET}")
+                } else {
+                    let first_line = ws.description.lines().next().unwrap_or("");
+                    first_line.to_string()
+                };
+
+                let empty_marker = if ws.is_empty {
+                    format!(" {DIM}(empty){RESET}")
+                } else {
+                    String::new()
+                };
+
+                println!(
+                    "  {GREEN}{name}{RESET}{padding}  {MAGENTA}{commit}{RESET}  {desc}{empty_marker}"
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("  {DIM}Error: {e}{RESET}");
+        }
+    }
 
     Ok(())
 }

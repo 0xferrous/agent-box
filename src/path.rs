@@ -1,4 +1,6 @@
 use eyre::{Result, eyre};
+use jj_lib::object_id::ObjectId;
+use jj_lib::repo::Repo;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
@@ -17,6 +19,15 @@ pub struct GitWorktreeInfo {
     pub id: Option<String>,
     pub is_main: bool,
     pub is_locked: bool,
+}
+
+/// Information about a JJ workspace
+#[derive(Debug, Clone)]
+pub struct JjWorkspaceInfo {
+    pub name: String,
+    pub commit_id: String,
+    pub description: String,
+    pub is_empty: bool,
 }
 
 /// A relative path identifier for a repository that can be resolved
@@ -201,7 +212,7 @@ impl RepoIdentifier {
     }
 
     /// Get all JJ workspaces for this repository using JJ's workspace tracking
-    pub fn jj_workspaces(&self, config: &Config) -> Result<Vec<String>> {
+    pub fn jj_workspaces(&self, config: &Config) -> Result<Vec<JjWorkspaceInfo>> {
         let workspace_path = self.source_path(config);
 
         if !workspace_path.exists() {
@@ -227,15 +238,27 @@ impl RepoIdentifier {
 
         let repo = workspace.repo_loader().load_at_head()?;
 
-        // Get workspace names from the View's wc_commit_ids
-        let workspace_names: Vec<String> = repo
-            .view()
-            .wc_commit_ids()
-            .keys()
-            .map(|name| name.as_str().to_owned())
-            .collect();
+        // Get workspace info from the View's wc_commit_ids
+        let mut workspaces = Vec::new();
+        for (name, commit_id) in repo.view().wc_commit_ids() {
+            let commit = repo.store().get_commit(commit_id).ok();
+            let description = commit
+                .as_ref()
+                .map(|c| c.description().trim().to_string())
+                .unwrap_or_default();
+            let is_empty = commit
+                .as_ref()
+                .and_then(|c| c.is_empty(repo.as_ref()).ok())
+                .unwrap_or(false);
+            workspaces.push(JjWorkspaceInfo {
+                name: name.as_str().to_owned(),
+                commit_id: commit_id.hex()[..8].to_string(),
+                description,
+                is_empty,
+            });
+        }
 
-        Ok(workspace_names)
+        Ok(workspaces)
     }
 
     /// Get all git worktrees for this repository
