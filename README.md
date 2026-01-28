@@ -44,20 +44,30 @@ Create `~/.agent-box.toml`:
 workspace_dir = "~/workspaces"    # Where git worktrees and jj workspaces are created
 base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/git repos)
 
-[docker]
+[runtime]
+backend = "docker"                # Container runtime: "docker" or "podman" (default: docker)
 image = "agent-box:latest"
 entrypoint = ["/bin/bash"]
 
-[docker.mounts.ro]
+[runtime.mounts.ro]
 absolute = ["/nix/store"]
 home_relative = ["~/.config/git"]
 
-[docker.mounts.rw]
+[runtime.mounts.rw]
 absolute = []
 home_relative = ["~/.local/share"]
 ```
 
 All paths support `~` expansion and will be canonicalized.
+
+### Runtime Backends
+
+Agent Box supports two container runtimes:
+
+- **Docker** (default): Set `backend = "docker"` or omit the `backend` key
+- **Podman**: Set `backend = "podman"`
+
+The main difference is that Podman uses `--userns keep-id` for better user namespace mapping, while Docker uses direct `--user` mapping.
 
 ## Usage
 
@@ -85,7 +95,7 @@ ab new myrepo -s feature-x --git
 ab new -s feature-x
 ```
 
-### Spawn a Docker Container
+### Spawn a Container
 
 ```bash
 # Spawn container for a session workspace
@@ -126,6 +136,7 @@ ab spawn -s my-session --entrypoint /bin/zsh
   - Adds configured mounts (ro/rw, absolute/home_relative)
   - Runs as current user (uid:gid)
   - Sets working directory to the workspace
+  - Uses the configured runtime backend (docker or podman)
 
 - **Repository Identification**:
   - Repos are identified by their relative path from `base_repo_dir`
@@ -156,4 +167,4 @@ This mounts the Nix store read-only and the daemon socket read-write, allowing t
 - Rust (2024 edition)
 - Git
 - Jujutsu (for jj workspaces)
-- Docker (for container spawning)
+- Docker or Podman (for container spawning)

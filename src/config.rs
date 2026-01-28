@@ -21,8 +21,10 @@ pub struct MountsConfig {
     pub rw: MountPaths,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DockerConfig {
+#[derive(Debug, Deserialize, Default)]
+pub struct RuntimeConfig {
+    #[serde(default = "default_backend")]
+    pub backend: String,
     pub image: String,
     #[serde(default)]
     pub entrypoint: Option<Vec<String>>,
@@ -32,11 +34,15 @@ pub struct DockerConfig {
     pub env: Vec<String>,
 }
 
+fn default_backend() -> String {
+    "docker".to_string()
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub workspace_dir: PathBuf,
     pub base_repo_dir: PathBuf,
-    pub docker: DockerConfig,
+    pub runtime: RuntimeConfig,
 }
 
 /// Load configuration from ~/.agent-box.toml

@@ -2,14 +2,14 @@ use clap::{Parser, Subcommand};
 
 mod config;
 mod display;
-mod docker;
 mod path;
 mod repo;
+mod runtime;
 
 use config::load_config_or_exit;
 use display::info;
-use docker::spawn_container;
 use repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
+use runtime::{build_container_config, create_runtime};
 
 use crate::path::WorkspaceType;
 
@@ -39,7 +39,7 @@ enum Commands {
         #[arg(long)]
         jj: bool,
     },
-    /// Spawn a new docker container for a workspace
+    /// Spawn a new container for a workspace
     Spawn {
         /// Session name (mutually exclusive with --local)
         #[arg(
@@ -165,15 +165,36 @@ fn main() {
                 }
             };
 
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            if let Err(e) = runtime.block_on(spawn_container(
+            // Build container configuration
+            let (workspace_path, source_path) = if local {
+                let path = repo_id.source_path(&config);
+                (path.clone(), path)
+            } else {
+                let session_name = session.as_ref().expect("session required");
+                let workspace_path = repo_id.workspace_path(&config, wtype, session_name);
+                let source_path = repo_id.source_path(&config);
+                (workspace_path, source_path)
+            };
+
+            let container_config = match build_container_config(
                 &config,
-                &repo_id,
-                wtype,
-                session.as_deref(),
+                &workspace_path,
+                &source_path,
                 local,
                 entrypoint.as_deref(),
-            )) {
+            ) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    eprintln!("Error building container config: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
+            // Get the appropriate runtime backend
+            let container_runtime = create_runtime(&config);
+
+            // Spawn the container
+            if let Err(e) = container_runtime.spawn_container(&container_config) {
                 eprintln!("Error spawning container: {}", e);
                 std::process::exit(1);
             }

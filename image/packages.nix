@@ -21,6 +21,8 @@ with pkgs; [
   unixtools.netstat
   gnupg
   tokei
+  file
+  comma
 
   aiTools.pi
   aiTools.claude-code
