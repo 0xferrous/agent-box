@@ -66,17 +66,6 @@ enum Commands {
         #[arg(long, short, conflicts_with = "local")]
         new: bool,
     },
-    /// Remove all workspaces and repositories for a given repo ID
-    Remove {
-        /// Repository identifier (e.g., "fr/agent-box" or "agent-box")
-        repo: String,
-        /// Show what would be deleted without actually deleting
-        #[arg(long)]
-        dry_run: bool,
-        /// Skip confirmation prompt
-        #[arg(long, short)]
-        force: bool,
-    },
     /// Debug commands (hidden from main help)
     #[command(hide = true)]
     Dbg {
@@ -91,6 +80,17 @@ enum DbgCommands {
     Locate {
         /// Repository search string (e.g., "agent-box" or "fr/agent-box")
         repo: Option<String>,
+    },
+    /// Remove all workspaces for a given repo ID
+    Remove {
+        /// Repository identifier (e.g., "fr/agent-box" or "agent-box")
+        repo: String,
+        /// Show what would be deleted without actually deleting
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        force: bool,
     },
 }
 
@@ -178,51 +178,6 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Remove {
-            repo,
-            dry_run,
-            force,
-        } => {
-            // Locate the repository identifier
-            let repo_id = match locate_repo(&config, Some(&repo)) {
-                Ok(id) => id,
-                Err(e) => {
-                    eprintln!("Error locating repository: {}", e);
-                    std::process::exit(1);
-                }
-            };
-
-            // Show what will be removed (always, even if --force is used)
-            if let Err(e) = remove_repo(&config, &repo_id, true) {
-                eprintln!("Error listing files to remove: {}", e);
-                std::process::exit(1);
-            }
-
-            // If dry-run, we're done
-            if dry_run {
-                return;
-            }
-
-            // Prompt for confirmation unless --force is used
-            if !force {
-                println!("\nAre you sure you want to remove these directories? [y/N] ");
-                use std::io::{self, BufRead};
-                let stdin = io::stdin();
-                let mut line = String::new();
-                stdin.lock().read_line(&mut line).unwrap();
-                let answer = line.trim().to_lowercase();
-                if answer != "y" && answer != "yes" {
-                    println!("Cancelled.");
-                    return;
-                }
-            }
-
-            // Actually remove
-            if let Err(e) = remove_repo(&config, &repo_id, false) {
-                eprintln!("Error removing repository: {}", e);
-                std::process::exit(1);
-            }
-        }
         Commands::Dbg { command } => match command {
             DbgCommands::Locate { repo } => match locate_repo(&config, repo.as_deref()) {
                 Ok(repo_id) => {
@@ -233,6 +188,51 @@ fn main() {
                     std::process::exit(1);
                 }
             },
+            DbgCommands::Remove {
+                repo,
+                dry_run,
+                force,
+            } => {
+                // Locate the repository identifier
+                let repo_id = match locate_repo(&config, Some(&repo)) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        eprintln!("Error locating repository: {}", e);
+                        std::process::exit(1);
+                    }
+                };
+
+                // Show what will be removed (always, even if --force is used)
+                if let Err(e) = remove_repo(&config, &repo_id, true) {
+                    eprintln!("Error listing files to remove: {}", e);
+                    std::process::exit(1);
+                }
+
+                // If dry-run, we're done
+                if dry_run {
+                    return;
+                }
+
+                // Prompt for confirmation unless --force is used
+                if !force {
+                    println!("\nAre you sure you want to remove these directories? [y/N] ");
+                    use std::io::{self, BufRead};
+                    let stdin = io::stdin();
+                    let mut line = String::new();
+                    stdin.lock().read_line(&mut line).unwrap();
+                    let answer = line.trim().to_lowercase();
+                    if answer != "y" && answer != "yes" {
+                        println!("Cancelled.");
+                        return;
+                    }
+                }
+
+                // Actually remove
+                if let Err(e) = remove_repo(&config, &repo_id, false) {
+                    eprintln!("Error removing repository: {}", e);
+                    std::process::exit(1);
+                }
+            }
         },
     }
 }

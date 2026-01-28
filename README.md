@@ -114,22 +114,6 @@ ab spawn -l --entrypoint /bin/zsh
 - `-s/--session`: Creates/uses a separate workspace directory, mounts source repo's `.git`/`.jj` separately
 - `-l/--local`: Uses current directory as both source and workspace (mutually exclusive with `-s`)
 
-### Remove Repository
-
-Remove all workspaces for a given repo ID:
-
-```bash
-# Show what would be deleted (dry run)
-ab remove myrepo --dry-run
-
-# Remove with confirmation prompt
-ab remove myrepo
-
-# Remove without confirmation
-ab remove myrepo -f
-ab remove myrepo --force
-```
-
 ## How It Works
 
 - **Directory Structure**:
