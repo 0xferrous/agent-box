@@ -89,10 +89,10 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DbgCommands {
-    /// Locate a repository by partial path match
+    /// Locate a repository by partial path match (or list all if no search given)
     Locate {
         /// Repository search string (e.g., "agent-box" or "fr/agent-box")
-        repo: String,
+        repo: Option<String>,
     },
 }
 
@@ -186,7 +186,7 @@ fn main() {
             force,
         } => {
             // Locate the repository identifier
-            let repo_id = match locate_repo(&config, &repo) {
+            let repo_id = match locate_repo(&config, Some(&repo)) {
                 Ok(id) => id,
                 Err(e) => {
                     eprintln!("Error locating repository: {}", e);
@@ -232,7 +232,7 @@ fn main() {
             }
         }
         Commands::Dbg { command } => match command {
-            DbgCommands::Locate { repo } => match locate_repo(&config, &repo) {
+            DbgCommands::Locate { repo } => match locate_repo(&config, repo.as_deref()) {
                 Ok(repo_id) => {
                     println!("{}", repo_id.relative_path().display());
                 }

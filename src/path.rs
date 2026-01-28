@@ -86,61 +86,16 @@ impl RepoIdentifier {
     pub fn find_matching(config: &Config, search: &str) -> Result<Vec<Self>> {
         let search_path = Path::new(search);
 
-        if !config.base_repo_dir.exists() {
-            return Ok(Vec::new());
-        }
+        // Get all repos, then filter by search
+        let all_repos = Self::discover_repo_ids(config)?;
 
-        let mut matches = Vec::new();
-
-        let is_repo = |path: &Path| path.join(".git").exists() || path.join(".jj").exists();
-
-        // Walk the base_repo_dir to find all repos (with .git or .jj)
-        // Skip descending into directories that are already repos
-        let walker = walkdir::WalkDir::new(&config.base_repo_dir)
-            .follow_links(false)
+        let matches = all_repos
             .into_iter()
-            .filter_entry(|e| {
-                let path = e.path();
-                // Always allow the base dir itself
-                if path == config.base_repo_dir {
-                    return true;
-                }
-                // Skip .git and .jj directories
-                if let Some(name) = path.file_name() {
-                    if name == ".git" || name == ".jj" {
-                        return false;
-                    }
-                }
-                // If parent is a repo, don't descend into children
-                if let Some(parent) = path.parent() {
-                    if parent != config.base_repo_dir && is_repo(parent) {
-                        return false;
-                    }
-                }
-                true
-            });
-
-        for entry in walker.filter_map(|e| e.ok()) {
-            let path = entry.path();
-
-            // Check if this looks like a repo (has .git or .jj directory)
-            if !path.is_dir() || !is_repo(path) {
-                continue;
-            }
-
-            // Get the relative path from base_repo_dir
-            let Ok(relative_path) = path.strip_prefix(&config.base_repo_dir) else {
-                continue;
-            };
-
-            // Check if this matches the search string
-            // Match if the relative path ends with the search path or equals it
-            if relative_path == search_path || relative_path.ends_with(search_path) {
-                matches.push(Self {
-                    relative_path: relative_path.to_path_buf(),
-                });
-            }
-        }
+            .filter(|repo| {
+                let rel = repo.relative_path();
+                rel == search_path || rel.ends_with(search_path)
+            })
+            .collect();
 
         Ok(matches)
     }

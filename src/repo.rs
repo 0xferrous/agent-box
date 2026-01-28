@@ -23,33 +23,45 @@ fn find_git_root() -> Result<PathBuf> {
         .map(|p: &std::path::Path| p.to_path_buf())
 }
 
+/// Prompt user to select from a list of repos
+fn prompt_select_repo(repos: Vec<RepoIdentifier>, prompt: &str) -> Result<RepoIdentifier> {
+    let options: Vec<String> = repos
+        .iter()
+        .map(|r| r.relative_path().display().to_string())
+        .collect();
+
+    let selected = inquire::Select::new(prompt, options)
+        .prompt()
+        .map_err(|e| eyre::eyre!("Failed to get selection: {}", e))?;
+
+    repos
+        .into_iter()
+        .find(|r| r.relative_path().display().to_string() == selected)
+        .ok_or_else(|| eyre::eyre!("Selected repository not found"))
+}
+
 /// Locate a repository by search string, prompting user if multiple matches found
 /// Returns the selected RepoIdentifier or an error if none found
-pub fn locate_repo(config: &Config, search: &str) -> Result<RepoIdentifier> {
-    let matches = RepoIdentifier::find_matching(config, search)?;
+pub fn locate_repo(config: &Config, search: Option<&str>) -> Result<RepoIdentifier> {
+    let matches = match search {
+        Some(s) => RepoIdentifier::find_matching(config, s)?,
+        None => RepoIdentifier::discover_repo_ids(config)?,
+    };
 
     match matches.len() {
-        0 => bail!("Could not find repository matching '{}'", search),
+        0 => bail!(
+            "Could not find repository{}",
+            search
+                .map(|s| format!(" matching '{}'", s))
+                .unwrap_or_default()
+        ),
         1 => Ok(matches.into_iter().next().unwrap()),
         _ => {
-            // Multiple matches - prompt user to select
-            let options: Vec<String> = matches
-                .iter()
-                .map(|r| r.relative_path().display().to_string())
-                .collect();
-
-            let selected = inquire::Select::new(
-                &format!("Multiple repositories match '{}'. Select one:", search),
-                options,
-            )
-            .prompt()
-            .map_err(|e| eyre::eyre!("Failed to get selection: {}", e))?;
-
-            // Find the matching RepoIdentifier
-            matches
-                .into_iter()
-                .find(|r| r.relative_path().display().to_string() == selected)
-                .ok_or_else(|| eyre::eyre!("Selected repository not found"))
+            let prompt = match search {
+                Some(s) => format!("Multiple repositories match '{}'. Select one:", s),
+                None => "Select a repository:".to_string(),
+            };
+            prompt_select_repo(matches, &prompt)
         }
     }
 }
@@ -59,7 +71,7 @@ pub fn locate_repo(config: &Config, search: &str) -> Result<RepoIdentifier> {
 /// - If Some: use locate_repo to find the repo_id (prompts if multiple matches)
 pub fn resolve_repo_id(config: &Config, repo_name: Option<&str>) -> Result<RepoIdentifier> {
     let repo_id = match repo_name {
-        Some(name) => locate_repo(config, name),
+        Some(name) => locate_repo(config, Some(name)),
         None => {
             let git_root = find_git_root()?;
             RepoIdentifier::from_repo_path(config, &git_root)
