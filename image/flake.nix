@@ -23,8 +23,6 @@
           gname = id.gname;
           aiTools = nix-ai-tools.packages.${system};
 
-          nixImage = pkgs.callPackage "${nix}/docker.nix" id;
-
           buildImage = { packages ? [] } : pkgs.callPackage "${nix}/docker.nix" {
             name = "agent-box";
             tag = "latest";
@@ -33,27 +31,6 @@
 
             extraPkgs = packages;
           };
-
-          # Build the image with specified packages layered on top of nix base
-          # buildImage = {
-          #   packages ? [],
-          # }: pkgs.dockerTools.buildLayeredImage {
-          #   name = "agent-box";
-          #   tag = "latest";
-          #
-          #   inherit uid gid uname gname;
-          #
-          #   # Use nix docker image as base layer
-          #   fromImage = nixImage;
-          #
-          #   # Include packages in the image
-          #   contents = packages;
-          #
-          #   config = {
-          #     User = "${toString uid}:${toString gid}";
-          #     Cmd = [ "/bin/bash" ];
-          #   };
-          # };
 
           # Default package list
           defaultPackages = import ./packages.nix { inherit pkgs aiTools; };
