@@ -1,9 +1,24 @@
 # Agent Box
 
-A Git/Jujutsu workspace management tool with Docker container integration.
+Run AI coding agents in sandboxed Docker containers with full permissions (`--dangerously-skip-permissions` or equivalent) without risking your host system.
+
+Agent Box manages Git/Jujutsu workspaces and spawns isolated containers where agents can freely execute commands, modify files, and install packages - all contained within a disposable environment.
+
+![Demo](https://github.com/user-attachments/assets/c7aaaf16-fbcc-4669-97f3-33c423f2ff90)
+
+## Why
+
+AI coding agents like Claude Code, Cursor, and others work best when given full autonomy - but running `--dangerously-skip-permissions` on your host machine is risky. Agents can execute arbitrary commands, install packages, modify system files, or accidentally `rm -rf` something important.
+
+Agent Box solves this by:
+- **Sandboxing**: Agents run in Docker containers with no access to your host system
+- **Disposable workspaces**: Each session gets a fresh Git worktree or JJ workspace that can be thrown away
+- **Shared Nix store**: Optionally share your host's Nix store for fast, reproducible tooling without rebuilding inside containers
+- **Easy iteration**: Spawn containers, let agents go wild, review changes, discard or keep - repeat
 
 ## Table of Contents
 
+- [Why](#why)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
