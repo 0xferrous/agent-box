@@ -2,6 +2,19 @@
 
 A Git/Jujutsu workspace management tool with Docker container integration.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+  - [Show Repository Information](#show-repository-information)
+  - [Create a New Workspace](#create-a-new-workspace)
+  - [Spawn a Docker Container](#spawn-a-docker-container)
+- [How It Works](#how-it-works)
+- [How-To](#how-to)
+  - [Share Host's Nix Store with Containers](#share-hosts-nix-store-with-containers)
+- [Requirements](#requirements)
+
 ## Installation
 
 ```bash
