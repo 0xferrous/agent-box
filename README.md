@@ -64,6 +64,44 @@ home_relative = []
 
 All paths support `~` expansion and will be canonicalized.
 
+### Mount Path Syntax
+
+Paths must be absolute (`/...`) or home-relative (`~/...`).
+
+**`absolute` vs `home_relative`:**
+
+The key difference is how single-path mounts (without explicit `:` mapping) handle the container path:
+
+- **`absolute`**: Same path on both sides  
+  `~/.config/git` → `/home/hostuser/.config/git:/home/hostuser/.config/git`
+
+- **`home_relative`**: Host's home prefix is replaced with container's home  
+  `~/.config/git` → `/home/hostuser/.config/git:/home/containeruser/.config/git`
+
+**Explicit `source:dest` mapping:**
+
+Both support explicit mappings where `~` expands to host home for source, container home for dest:
+
+```toml
+[runtime.mounts.rw]
+# Map host socket to container's ~/.gnupg/S.gpg-agent
+home_relative = ["/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent"]
+```
+
+**Examples:**
+```toml
+[runtime.mounts.ro]
+# Same path on both sides (stays /nix/store:/nix/store)
+absolute = ["/nix/store"]
+
+# Host ~/.config/git -> container ~/.config/git (home translated)
+home_relative = ["~/.config/git"]
+
+[runtime.mounts.rw]
+# Explicit mapping with different paths
+absolute = ["/host/path:/container/path"]
+```
+
 ### Runtime Backends
 
 Agent Box supports two container runtimes:

@@ -129,156 +129,242 @@ pub fn build_container_config(
 
 /// Add config-defined mounts to the binds vector
 fn add_config_mounts(config: &Config, binds: &mut Vec<String>) -> Result<()> {
-    use eyre::WrapErr;
-
-    let pb_to_str = |pb: &PathBuf| {
-        pb.canonicalize()
-            .expect(&format!("couldnt canonicalize: {pb:?}"))
-            .to_string_lossy()
-            .to_string()
-    };
-    let mount_path = |path: &str, mode: &str| format!("{path}:{path}:{mode}");
     let mount_path_custom = |src: &str, dst: &str, mode: &str| format!("{src}:{dst}:{mode}");
-    let mount_path_ro = |path: &str| mount_path(path, "ro");
-    let mount_path_rw = |path: &str| mount_path(path, "rw");
-    let mount_path_overlay = |path: &str| format!("{path}:{path}:O");
 
-    // Process read-only absolute mounts
-    for dir in &config.runtime.mounts.ro.absolute {
-        let expanded = crate::path::expand_path(&PathBuf::from(dir))
-            .wrap_err(format!("Failed to expand ro.absolute path: {}", dir))?;
+    let mounts = &config.runtime.mounts;
 
-        if !expanded.exists() {
-            return Err(eyre::eyre!(
-                "Read-only absolute mount does not exist: {}",
-                dir
-            ));
+    // (mount_specs, home_relative, mode)
+    let mount_groups: [(&[String], bool, &str); 6] = [
+        (&mounts.ro.absolute, false, "ro"),
+        (&mounts.ro.home_relative, true, "ro"),
+        (&mounts.rw.absolute, false, "rw"),
+        (&mounts.rw.home_relative, true, "rw"),
+        (&mounts.o.absolute, false, "O"),
+        (&mounts.o.home_relative, true, "O"),
+    ];
+
+    for (specs, home_relative, mode) in mount_groups {
+        for mount_spec in specs {
+            let (host_path, container_path) = resolve_mount(mount_spec, home_relative)?;
+
+            if !PathBuf::from(&host_path).exists() {
+                return Err(eyre::eyre!("Mount does not exist: {}", mount_spec));
+            }
+
+            binds.push(mount_path_custom(&host_path, &container_path, mode));
         }
-
-        binds.push(mount_path_ro(&pb_to_str(&expanded)));
-    }
-
-    // Process read-only home_relative mounts
-    for dir in &config.runtime.mounts.ro.home_relative {
-        let (host_path, container_path) = resolve_home_relative_mount(dir)?;
-
-        let host_pathbuf = PathBuf::from(&host_path);
-        if !host_pathbuf.exists() {
-            return Err(eyre::eyre!(
-                "Read-only home_relative mount does not exist: {}",
-                dir
-            ));
-        }
-
-        binds.push(mount_path_custom(&host_path, &container_path, "ro"));
-    }
-
-    // Process read-write absolute mounts
-    for dir in &config.runtime.mounts.rw.absolute {
-        let expanded = crate::path::expand_path(&PathBuf::from(dir))
-            .wrap_err(format!("Failed to expand rw.absolute path: {}", dir))?;
-
-        if !expanded.exists() {
-            return Err(eyre::eyre!(
-                "Read-write absolute mount does not exist: {}",
-                dir
-            ));
-        }
-
-        binds.push(mount_path_rw(&pb_to_str(&expanded)));
-    }
-
-    // Process read-write home_relative mounts
-    for dir in &config.runtime.mounts.rw.home_relative {
-        let (host_path, container_path) = resolve_home_relative_mount(dir)?;
-
-        let host_pathbuf = PathBuf::from(&host_path);
-        if !host_pathbuf.exists() {
-            return Err(eyre::eyre!(
-                "Read-write home_relative mount does not exist: {}",
-                dir
-            ));
-        }
-
-        binds.push(mount_path_custom(&host_path, &container_path, "rw"));
-    }
-
-    // Process overlay absolute mounts
-    for dir in &config.runtime.mounts.o.absolute {
-        let expanded = crate::path::expand_path(&PathBuf::from(dir))
-            .wrap_err(format!("Failed to expand o.absolute path: {}", dir))?;
-
-        if !expanded.exists() {
-            return Err(eyre::eyre!(
-                "Overlay absolute mount does not exist: {}",
-                dir
-            ));
-        }
-
-        binds.push(mount_path_overlay(&pb_to_str(&expanded)));
-    }
-
-    // Process overlay home_relative mounts
-    for dir in &config.runtime.mounts.o.home_relative {
-        let (host_path, container_path) = resolve_home_relative_mount(dir)?;
-
-        let host_pathbuf = PathBuf::from(&host_path);
-        if !host_pathbuf.exists() {
-            return Err(eyre::eyre!(
-                "Overlay home_relative mount does not exist: {}",
-                dir
-            ));
-        }
-
-        binds.push(mount_path_custom(&host_path, &container_path, "O"));
     }
 
     Ok(())
 }
 
-/// Resolve a home_relative mount path
-/// Takes a host path (e.g., "~/dev/patched") and returns (host_path, container_path)
-/// where container_path is relative to the container user's home directory
-fn resolve_home_relative_mount(host_path: &str) -> Result<(String, String)> {
+/// Resolve a mount spec into (host_path, container_path).
+///
+/// Mount spec can be:
+/// - A single path: uses same path for host and container (with home translation if `home_relative`)
+/// - A `source:dest` mapping: explicit different paths
+///
+/// Paths must be absolute (`/...`) or home-relative (`~/...`).
+///
+/// The `home_relative` flag controls how single-path specs are handled:
+/// - `home_relative = false` (absolute): `/home/host/.config` → `/home/host/.config` (same path)
+/// - `home_relative = true`: `/home/host/.config` → `/home/container/.config` (home prefix replaced)
+///
+/// With explicit `source:dest` mapping, `~` expands to host home for source, container home for dest.
+fn resolve_mount(mount_spec: &str, home_relative: bool) -> Result<(String, String)> {
     use eyre::WrapErr;
 
-    // Expand the host path
-    let expanded_host = crate::path::expand_path(&PathBuf::from(host_path)).wrap_err(format!(
-        "Failed to expand home_relative path: {}",
-        host_path
-    ))?;
-
-    // Get the host's home directory
     let host_home = std::env::var("HOME").wrap_err("Failed to get HOME environment variable")?;
-    let host_home_path = PathBuf::from(&host_home);
-
-    // Get the current user for container path
     let container_user = std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "user".to_string());
+    let container_home = format!("/home/{}", container_user);
 
-    // Get the relative path from host's home
-    let rel_path = expanded_host
-        .strip_prefix(&host_home_path)
-        .wrap_err(format!(
-            "Path {} is not relative to home directory {}",
-            expanded_host.display(),
-            host_home_path.display()
-        ))?;
+    let (host_expanded, container_path) =
+        resolve_mount_with_homes(mount_spec, home_relative, &host_home, &container_home)?;
 
-    // Construct container path
-    let container_path = PathBuf::from("/home").join(container_user).join(rel_path);
-
-    // Canonicalize and convert to strings
-    let host_str = expanded_host
+    // Canonicalize host path (must exist)
+    let host_canonical = PathBuf::from(&host_expanded)
         .canonicalize()
         .wrap_err(format!(
-            "Failed to canonicalize path: {}",
-            expanded_host.display()
+            "Failed to canonicalize host path: {}",
+            host_expanded
         ))?
         .to_string_lossy()
         .to_string();
-    let container_str = container_path.to_string_lossy().to_string();
 
-    Ok((host_str, container_str))
+    // If container path was derived from host path (no explicit dest, not home_relative),
+    // we need to update it to use the canonical path
+    let container_path = if container_path == host_expanded {
+        host_canonical.clone()
+    } else if home_relative && !mount_spec.contains(':') {
+        // Re-derive with canonical path for home_relative
+        if let Some(suffix) = host_canonical.strip_prefix(&host_home) {
+            format!("{}{}", container_home, suffix)
+        } else {
+            host_canonical.clone()
+        }
+    } else {
+        container_path
+    };
+
+    Ok((host_canonical, container_path))
+}
+
+/// Inner mount resolution logic, takes home directories as parameters for testability.
+/// Returns (host_expanded, container_path) where host_expanded is NOT canonicalized.
+fn resolve_mount_with_homes(
+    mount_spec: &str,
+    home_relative: bool,
+    host_home: &str,
+    container_home: &str,
+) -> Result<(String, String)> {
+    use eyre::WrapErr;
+
+    // Split on ':' to check for explicit source:dest mapping
+    let (host_spec, container_spec, has_explicit_dest) = match mount_spec.find(':') {
+        Some(idx) => (&mount_spec[..idx], &mount_spec[idx + 1..], true),
+        None => (mount_spec, mount_spec, false),
+    };
+
+    // Expand host path (~ -> host home)
+    let host_expanded = expand_mount_path(host_spec, host_home)
+        .wrap_err_with(|| format!("Invalid host path in mount: {}", mount_spec))?;
+
+    // Determine container path
+    let container_path = if has_explicit_dest {
+        // Explicit dest: expand ~ to container home
+        expand_mount_path(container_spec, container_home)
+            .wrap_err_with(|| format!("Invalid container path in mount: {}", mount_spec))?
+    } else if home_relative {
+        // No explicit dest + home_relative: replace host home prefix with container home
+        if let Some(suffix) = host_expanded.strip_prefix(host_home) {
+            format!("{}{}", container_home, suffix)
+        } else {
+            // Path not under host home, use as-is
+            host_expanded.clone()
+        }
+    } else {
+        // No explicit dest + absolute: same path on both sides
+        host_expanded.clone()
+    };
+
+    Ok((host_expanded, container_path))
+}
+
+/// Expand a mount path. Paths must be absolute (`/...`) or home-relative (`~/...`).
+fn expand_mount_path(path: &str, home: &str) -> Result<String> {
+    if path.starts_with('~') {
+        Ok(path.replacen('~', home, 1))
+    } else if path.starts_with('/') {
+        Ok(path.to_string())
+    } else {
+        Err(eyre::eyre!(
+            "Path must be absolute (/...) or home-relative (~/...): {}",
+            path
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HOST_HOME: &str = "/home/hostuser";
+    const CONTAINER_HOME: &str = "/home/containeruser";
+
+    #[test]
+    fn test_expand_mount_path_tilde() {
+        assert_eq!(
+            expand_mount_path("~/.config", HOST_HOME).unwrap(),
+            "/home/hostuser/.config"
+        );
+    }
+
+    #[test]
+    fn test_expand_mount_path_absolute() {
+        assert_eq!(
+            expand_mount_path("/nix/store", HOST_HOME).unwrap(),
+            "/nix/store"
+        );
+    }
+
+    #[test]
+    fn test_expand_mount_path_relative_rejected() {
+        assert!(expand_mount_path(".config", HOST_HOME).is_err());
+        assert!(expand_mount_path("config/git", HOST_HOME).is_err());
+    }
+
+    #[test]
+    fn test_resolve_absolute_single_path() {
+        // absolute (home_relative=false): same path on both sides
+        let (host, container) =
+            resolve_mount_with_homes("/nix/store", false, HOST_HOME, CONTAINER_HOME).unwrap();
+        assert_eq!(host, "/nix/store");
+        assert_eq!(container, "/nix/store");
+    }
+
+    #[test]
+    fn test_resolve_absolute_single_path_with_tilde() {
+        // absolute with ~: expands to host home, container gets same absolute path
+        let (host, container) =
+            resolve_mount_with_homes("~/.config", false, HOST_HOME, CONTAINER_HOME).unwrap();
+        assert_eq!(host, "/home/hostuser/.config");
+        assert_eq!(container, "/home/hostuser/.config"); // same path, NOT translated
+    }
+
+    #[test]
+    fn test_resolve_home_relative_single_path() {
+        // home_relative=true: host home prefix replaced with container home
+        let (host, container) =
+            resolve_mount_with_homes("~/.config", true, HOST_HOME, CONTAINER_HOME).unwrap();
+        assert_eq!(host, "/home/hostuser/.config");
+        assert_eq!(container, "/home/containeruser/.config"); // translated!
+    }
+
+    #[test]
+    fn test_resolve_home_relative_path_not_under_home() {
+        // home_relative=true but path not under home: use as-is
+        let (host, container) =
+            resolve_mount_with_homes("/nix/store", true, HOST_HOME, CONTAINER_HOME).unwrap();
+        assert_eq!(host, "/nix/store");
+        assert_eq!(container, "/nix/store");
+    }
+
+    #[test]
+    fn test_resolve_explicit_mapping_absolute() {
+        // Explicit source:dest mapping
+        let (host, container) = resolve_mount_with_homes(
+            "/host/path:/container/path",
+            false,
+            HOST_HOME,
+            CONTAINER_HOME,
+        )
+        .unwrap();
+        assert_eq!(host, "/host/path");
+        assert_eq!(container, "/container/path");
+    }
+
+    #[test]
+    fn test_resolve_explicit_mapping_with_tilde() {
+        // Explicit mapping with ~ on dest side expands to container home
+        let (host, container) = resolve_mount_with_homes(
+            "/run/user/1000/gnupg:~/.gnupg",
+            true,
+            HOST_HOME,
+            CONTAINER_HOME,
+        )
+        .unwrap();
+        assert_eq!(host, "/run/user/1000/gnupg");
+        assert_eq!(container, "/home/containeruser/.gnupg");
+    }
+
+    #[test]
+    fn test_resolve_explicit_mapping_tilde_both_sides() {
+        // ~ on both sides: host ~ -> host home, container ~ -> container home
+        let (host, container) =
+            resolve_mount_with_homes("~/.foo:~/.bar", false, HOST_HOME, CONTAINER_HOME).unwrap();
+        assert_eq!(host, "/home/hostuser/.foo");
+        assert_eq!(container, "/home/containeruser/.bar");
+    }
 }

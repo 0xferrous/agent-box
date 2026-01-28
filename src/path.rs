@@ -310,12 +310,13 @@ mod tests {
     use super::*;
 
     fn make_test_config() -> Config {
-        use crate::config::DockerConfig;
+        use crate::config::RuntimeConfig;
 
         Config {
             base_repo_dir: PathBuf::from("/home/user/repos"),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            docker: DockerConfig {
+            runtime: RuntimeConfig {
+                backend: "docker".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
@@ -356,7 +357,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_exact_match() {
-        use crate::config::DockerConfig;
+        use crate::config::RuntimeConfig;
 
         let temp_dir = std::env::temp_dir().join(format!("ab-test-locate-{}", std::process::id()));
         let base_repo_dir = temp_dir.join("repos");
@@ -368,7 +369,8 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            docker: DockerConfig {
+            runtime: RuntimeConfig {
+                backend: "docker".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
@@ -387,7 +389,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_partial_match() {
-        use crate::config::DockerConfig;
+        use crate::config::RuntimeConfig;
 
         let temp_dir =
             std::env::temp_dir().join(format!("ab-test-locate-partial-{}", std::process::id()));
@@ -400,7 +402,8 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            docker: DockerConfig {
+            runtime: RuntimeConfig {
+                backend: "docker".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
@@ -419,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_find_matching_no_match() {
-        use crate::config::DockerConfig;
+        use crate::config::RuntimeConfig;
 
         let temp_dir =
             std::env::temp_dir().join(format!("ab-test-locate-nomatch-{}", std::process::id()));
@@ -432,7 +435,8 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             workspace_dir: PathBuf::from("/mnt/workspace"),
-            docker: DockerConfig {
+            runtime: RuntimeConfig {
+                backend: "docker".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
