@@ -130,14 +130,6 @@ ab remove myrepo -f
 ab remove myrepo --force
 ```
 
-### Interactive Clean
-
-Interactively select and clean repositories and their artifacts:
-
-```bash
-ab clean
-```
-
 ## How It Works
 
 - **Directory Structure**:

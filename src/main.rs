@@ -9,7 +9,7 @@ mod repo;
 use config::load_config_or_exit;
 use display::info;
 use docker::spawn_container;
-use repo::{clean_repos, locate_repo, new_workspace, remove_repo, resolve_repo_id};
+use repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
 
 use crate::path::WorkspaceType;
 
@@ -77,8 +77,6 @@ enum Commands {
         #[arg(long, short)]
         force: bool,
     },
-    /// Interactively clean repositories and their artifacts
-    Clean,
     /// Debug commands (hidden from main help)
     #[command(hide = true)]
     Dbg {
@@ -222,12 +220,6 @@ fn main() {
             // Actually remove
             if let Err(e) = remove_repo(&config, &repo_id, false) {
                 eprintln!("Error removing repository: {}", e);
-                std::process::exit(1);
-            }
-        }
-        Commands::Clean => {
-            if let Err(e) = clean_repos(&config) {
-                eprintln!("Error cleaning repositories: {}", e);
                 std::process::exit(1);
             }
         }
