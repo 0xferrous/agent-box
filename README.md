@@ -192,6 +192,74 @@ ab spawn -s my-session --entrypoint /bin/zsh
 
 ## How-To
 
+### Forward GPG Agent to Containers
+
+To use your host's GPG keys for signing inside containers, you need to:
+
+1. Mount `~/.gnupg` as an overlay (so container writes don't affect host)
+2. Mount the GPG socket files from the host's runtime directory
+
+**Find your socket paths:**
+
+On your host, run:
+```bash
+gpgconf --list-dirs
+```
+
+Look for these paths:
+- `socketdir` - where GPG expects sockets (usually `~/.gnupg`)
+- `agent-socket` - the gpg-agent socket
+- `keyboxd-socket` - the keybox daemon socket (GPG 2.4+)
+
+On most Linux systems with systemd, the actual sockets live in `/run/user/<UID>/gnupg/`.
+
+**Configuration:**
+
+```toml
+[runtime.mounts.o]  # Overlay mount (Podman only)
+home_relative = ["~/.gnupg"]
+
+[runtime.mounts.rw]
+# Mount sockets from host's runtime dir to container's ~/.gnupg
+# Replace 1000 with your UID
+home_relative = [
+  "/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent",
+  "/run/user/1000/gnupg/S.keyboxd:~/.gnupg/S.keyboxd",
+]
+```
+
+**Why overlay mount for `~/.gnupg`?**
+
+GPG creates lock files and other temporary files in `~/.gnupg`. Without an overlay:
+- Lock files from the host (with host PIDs) confuse the container
+- Container writes would affect your host's GPG directory
+
+The overlay mount lets the container see your keys and config but writes go to a temporary layer.
+
+**For Docker users:**
+
+Docker doesn't support overlay mounts. You can either:
+1. Use Podman instead (`backend = "podman"`)
+2. Mount `~/.gnupg` as read-write and accept that lock files may conflict
+
+**Smartcard/YubiKey users:**
+
+If your signing key is on a smartcard, also mount the scdaemon socket:
+```toml
+home_relative = [
+  "/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent",
+  "/run/user/1000/gnupg/S.keyboxd:~/.gnupg/S.keyboxd",
+  "/run/user/1000/gnupg/S.scdaemon:~/.gnupg/S.scdaemon",
+]
+```
+
+**Troubleshooting:**
+
+- **"Connection timed out" / "waiting for lock"**: Stale lock files in `~/.gnupg`. Use overlay mount or clean up `.#lk*` files.
+- **"IPC call has been cancelled"**: Usually means your default key is on a smartcard that isn't connected. Specify a different key with `gpg -u <keyid>`.
+- **Verify sockets are working**: Run `gpg-connect-agent 'getinfo socket_name' /bye` - should show the socket path and return `OK`.
+- **List keys**: `gpg --list-secret-keys` - keys with `>` after `sec` are on smartcards.
+
 ### Share Host's Nix Store with Containers
 
 To use binaries from your host's Nix store inside containers via the daemon socket:
