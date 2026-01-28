@@ -56,31 +56,7 @@
           # };
 
           # Default package list
-          defaultPackages = with pkgs; [
-            bash
-            curl
-            wget
-            jq
-            ripgrep
-            fd
-            tree
-            neovim
-            jujutsu
-            strace
-            gnused
-            gawk
-            diffutils
-            nodejs_24
-            python315
-            gnumake
-            lsof
-            unixtools.netstat
-            gnupg
-            tokei
-
-            aiTools.pi
-            aiTools.claude-code
-          ];
+          defaultPackages = import ./packages.nix { inherit pkgs aiTools; };
         in
         {
           default = buildImage { packages = defaultPackages; };
