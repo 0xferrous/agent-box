@@ -14,7 +14,7 @@ Create `~/.agent-box.toml`:
 
 ```toml
 workspace_dir = "~/workspaces"    # Where git worktrees and jj workspaces are created
-base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/git)
+base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/git repos)
 
 [docker]
 image = "agent-box:latest"
@@ -52,18 +52,11 @@ This allows containers to use binaries from your host's Nix store via the daemon
 
 ### Show Repository Information
 
-Display configuration, current repository status, and list all workspaces:
+Display git worktrees and jj workspaces for the current repository:
 
 ```bash
 ab info
 ```
-
-This shows:
-- Configuration paths (workspace_dir, base_repo_dir)
-- Current repository status
-- All git worktrees for the current repository
-- JJ workspace status
-- All jj workspaces found
 
 ### Create a New Workspace
 
@@ -93,27 +86,37 @@ ab new -s feature-x
 Spawn a Docker container for a workspace:
 
 ```bash
-# Spawn container for session (positional argument)
-ab spawn my-session
+# Spawn container for a session workspace
+ab spawn -s my-session
+ab spawn --session my-session
 
 # Specify repository with -r/--repo
-ab spawn my-session -r myrepo
-ab spawn my-session --repo myrepo
+ab spawn -s my-session -r myrepo
+ab spawn --session my-session --repo myrepo
 
 # Create workspace and spawn container (--new flag)
-ab spawn my-session --repo myrepo --new
-ab spawn my-session -r myrepo -n
+ab spawn -s my-session -r myrepo -n
+ab spawn --session my-session --repo myrepo --new
 
 # Use git worktree instead of jj workspace
-ab spawn my-session --repo myrepo --git
+ab spawn -s my-session -r myrepo --git
+
+# Local mode: use current directory as workspace (no separate workspace)
+ab spawn -l
+ab spawn --local
 
 # Override entrypoint
-ab spawn my-session --repo myrepo --entrypoint /bin/zsh
+ab spawn -s my-session --entrypoint /bin/zsh
+ab spawn -l --entrypoint /bin/zsh
 ```
+
+**Session vs Local mode:**
+- `-s/--session`: Creates/uses a separate workspace directory, mounts source repo's `.git`/`.jj` separately
+- `-l/--local`: Uses current directory as both source and workspace (mutually exclusive with `-s`)
 
 ### Remove Repository
 
-Remove all workspaces and repositories for a given repo ID:
+Remove all workspaces for a given repo ID:
 
 ```bash
 # Show what would be deleted (dry run)
@@ -135,22 +138,6 @@ Interactively select and clean repositories and their artifacts:
 ab clean
 ```
 
-### One-off Container
-
-Spawn a one-off container with the current directory mounted:
-
-```bash
-# Mount as read-only (default)
-ab oneoff
-
-# Mount as read-write
-ab oneoff -w
-ab oneoff --write
-
-# Override entrypoint
-ab oneoff --entrypoint /bin/zsh
-```
-
 ## How It Works
 
 - **Directory Structure**:
@@ -159,12 +146,13 @@ ab oneoff --entrypoint /bin/zsh
   - `workspace_dir/jj/{repo_path}/{session}`: JJ workspaces
 
 - **New Workspace**:
-  - For JJ: Creates a workspace from a colocated jj repo in `base_repo_dir` using `jj workspace add`
-  - For Git: Creates a worktree from a git repo in `base_repo_dir` using `git worktree add`
+  - For JJ: Creates a workspace from a colocated jj repo using `jj workspace add`
+  - For Git: Creates a worktree from a git repo using `git worktree add`
 
 - **Spawn Container**:
   - Mounts the workspace path as read-write
-  - Mounts source repo's `.git` and `.jj` directories
+  - In session mode: also mounts source repo's `.git` and `.jj` directories
+  - In local mode: workspace and source are the same directory
   - Adds configured mounts (ro/rw, absolute/home_relative)
   - Runs as current user (uid:gid)
   - Sets working directory to the workspace
@@ -172,6 +160,7 @@ ab oneoff --entrypoint /bin/zsh
 - **Repository Identification**:
   - Repos are identified by their relative path from `base_repo_dir`
   - Can search by full path (`fr/agent-box`) or partial name (`agent-box`)
+  - If multiple repos match, prompts user to select
 
 ## Requirements
 
