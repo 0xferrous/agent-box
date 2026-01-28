@@ -31,36 +31,17 @@ home_relative = ["~/.local/share"]
 
 All paths support `~` expansion and will be canonicalized.
 
-### Sharing Nix Store
-
-To share your host's Nix store with containers:
-
-```toml
-[docker]
-env = ["NIX_REMOTE=daemon"]
-
-[docker.mounts.ro]
-absolute = ["/nix/store"]
-
-[docker.mounts.rw]
-absolute = ["/nix/var/nix/daemon-socket/"]
-```
-
-This allows containers to use binaries from your host's Nix store via the daemon socket.
-
 ## Usage
 
 ### Show Repository Information
-
-Display git worktrees and jj workspaces for the current repository:
 
 ```bash
 ab info
 ```
 
-### Create a New Workspace
+Displays git worktrees and jj workspaces for the current repository.
 
-Create a new jj workspace (default) or git worktree:
+### Create a New Workspace
 
 ```bash
 # Create jj workspace (default), prompts for session name
@@ -68,46 +49,31 @@ ab new myrepo
 
 # Create jj workspace with session name
 ab new myrepo -s feature-x
-ab new myrepo --session feature-x
 
-# Create git worktree
-ab new myrepo --session feature-x --git
-
-# Create jj workspace explicitly
-ab new myrepo --session feature-x --jj
+# Create git worktree instead
+ab new myrepo -s feature-x --git
 
 # Use current directory's repo
-ab new --session feature-x
 ab new -s feature-x
 ```
 
 ### Spawn a Docker Container
 
-Spawn a Docker container for a workspace:
-
 ```bash
 # Spawn container for a session workspace
 ab spawn -s my-session
-ab spawn --session my-session
 
-# Specify repository with -r/--repo
+# Specify repository
 ab spawn -s my-session -r myrepo
-ab spawn --session my-session --repo myrepo
 
-# Create workspace and spawn container (--new flag)
+# Create workspace and spawn container
 ab spawn -s my-session -r myrepo -n
-ab spawn --session my-session --repo myrepo --new
 
-# Use git worktree instead of jj workspace
-ab spawn -s my-session -r myrepo --git
-
-# Local mode: use current directory as workspace (no separate workspace)
+# Local mode: use current directory as workspace
 ab spawn -l
-ab spawn --local
 
 # Override entrypoint
 ab spawn -s my-session --entrypoint /bin/zsh
-ab spawn -l --entrypoint /bin/zsh
 ```
 
 **Session vs Local mode:**
@@ -137,6 +103,25 @@ ab spawn -l --entrypoint /bin/zsh
   - Repos are identified by their relative path from `base_repo_dir`
   - Can search by full path (`fr/agent-box`) or partial name (`agent-box`)
   - If multiple repos match, prompts user to select
+
+## How-To
+
+### Share Host's Nix Store with Containers
+
+To use binaries from your host's Nix store inside containers via the daemon socket:
+
+```toml
+[docker]
+env = ["NIX_REMOTE=daemon"]
+
+[docker.mounts.ro]
+absolute = ["/nix/store"]
+
+[docker.mounts.rw]
+absolute = ["/nix/var/nix/daemon-socket/"]
+```
+
+This mounts the Nix store read-only and the daemon socket read-write, allowing the container to request builds/fetches from the host's Nix daemon.
 
 ## Requirements
 
