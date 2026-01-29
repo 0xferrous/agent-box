@@ -56,7 +56,7 @@ enum Commands {
         #[arg(long, short)]
         repo: Option<String>,
         /// Override entrypoint from config
-        #[arg(long)]
+        #[arg(long, short)]
         entrypoint: Option<String>,
         #[arg(long, conflicts_with = "jj")]
         git: bool,

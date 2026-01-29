@@ -159,7 +159,7 @@ ab spawn -s my-session -r myrepo -n
 ab spawn -l
 
 # Override entrypoint
-ab spawn -s my-session --entrypoint /bin/zsh
+ab spawn -s my-session -e /bin/zsh
 
 # Add additional mounts (home-relative with -m, absolute with -M)
 ab spawn -s my-session -m ~/data -m ro:~/.config/git
