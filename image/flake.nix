@@ -31,6 +31,10 @@
 
             inherit uid gid uname gname;
 
+            nixConf = {
+              experimental-features = [ "nix-command" "flakes" ];
+            };
+
             extraPkgs = packages;
 
             # extraFakeRootCommands = ''
