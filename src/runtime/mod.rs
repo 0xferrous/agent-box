@@ -3,7 +3,7 @@ pub mod podman;
 
 use docker::ContainerBackend;
 use eyre::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 
@@ -30,14 +30,6 @@ impl Runtime {
         match self {
             Runtime::Docker(rt) => rt.spawn_container(config),
             Runtime::Podman(rt) => rt.spawn_container(config),
-        }
-    }
-
-    /// Get the name of this runtime (e.g., "docker", "podman")
-    pub fn name(&self) -> &str {
-        match self {
-            Runtime::Docker(rt) => rt.name(),
-            Runtime::Podman(rt) => rt.name(),
         }
     }
 }
@@ -162,15 +154,15 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<CliMount> {
 /// - cli_mounts: additional mounts from CLI arguments
 pub fn build_container_config(
     config: &Config,
-    workspace_path: &PathBuf,
-    source_path: &PathBuf,
+    workspace_path: &Path,
+    source_path: &Path,
     local: bool,
     entrypoint_override: Option<&str>,
     cli_mounts: &[CliMount],
 ) -> Result<ContainerConfig> {
-    let pb_to_str = |pb: &PathBuf| {
+    let pb_to_str = |pb: &Path| {
         pb.canonicalize()
-            .expect(&format!("couldnt canonicalize: {pb:?}"))
+            .unwrap_or_else(|_| panic!("couldnt canonicalize: {pb:?}"))
             .to_string_lossy()
             .to_string()
     };

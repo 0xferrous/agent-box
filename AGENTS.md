@@ -3,3 +3,9 @@
 - always run `cargo fmt` to ensure the code is formatted correctly
 - keep the table of contents in the @README.md up to date whenever a change is made
 - use conventionalcommits.org pattern when writing commit messages
+
+## pre commit
+
+- format code with `cargo fmt`
+- check code with `cargo check`
+- check clippy with `cargo clippy`

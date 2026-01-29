@@ -124,16 +124,17 @@ impl RepoIdentifier {
                     return true;
                 }
                 // Skip .git and .jj directories
-                if let Some(name) = path.file_name() {
-                    if name == ".git" || name == ".jj" {
-                        return false;
-                    }
+                if let Some(name) = path.file_name()
+                    && (name == ".git" || name == ".jj")
+                {
+                    return false;
                 }
                 // If parent is a repo, don't descend into children
-                if let Some(parent) = path.parent() {
-                    if parent != base_dir && is_repo(parent) {
-                        return false;
-                    }
+                if let Some(parent) = path.parent()
+                    && parent != base_dir
+                    && is_repo(parent)
+                {
+                    return false;
                 }
                 true
             });

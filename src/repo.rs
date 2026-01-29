@@ -152,7 +152,7 @@ fn create_jj_workspace(config: &Config, repo_id: &RepoIdentifier, session: &str)
     // Use jj workspace add from the colocated repo
     let output = std::process::Command::new("jj")
         .current_dir(&source_path)
-        .args(&[
+        .args([
             "workspace",
             "add",
             "--name",
@@ -186,7 +186,7 @@ fn create_git_worktree(config: &Config, repo_id: &RepoIdentifier, session: &str)
     // Check if branch exists
     let check_output = std::process::Command::new("git")
         .current_dir(&source_path)
-        .args(&["rev-parse", "--verify", &format!("refs/heads/{}", session)])
+        .args(["rev-parse", "--verify", &format!("refs/heads/{}", session)])
         .output()?;
 
     let branch_exists = check_output.status.success();

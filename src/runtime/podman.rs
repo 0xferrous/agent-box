@@ -72,8 +72,4 @@ impl ContainerBackend for PodmanRuntime {
 
         Ok(())
     }
-
-    fn name(&self) -> &str {
-        "podman"
-    }
 }

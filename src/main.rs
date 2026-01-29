@@ -258,13 +258,13 @@ fn main() {
 
                 // Prompt for confirmation unless --force is used
                 if !force {
-                    println!("\nAre you sure you want to remove these directories? [y/N] ");
-                    use std::io::{self, BufRead};
-                    let stdin = io::stdin();
-                    let mut line = String::new();
-                    stdin.lock().read_line(&mut line).unwrap();
-                    let answer = line.trim().to_lowercase();
-                    if answer != "y" && answer != "yes" {
+                    let confirmed =
+                        inquire::Confirm::new("Are you sure you want to remove these directories?")
+                            .with_default(false)
+                            .prompt()
+                            .unwrap_or(false);
+
+                    if !confirmed {
                         println!("Cancelled.");
                         return;
                     }

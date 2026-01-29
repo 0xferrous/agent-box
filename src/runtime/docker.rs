@@ -69,14 +69,9 @@ impl ContainerBackend for DockerRuntime {
 
         Ok(())
     }
-
-    fn name(&self) -> &str {
-        "docker"
-    }
 }
 
 /// Internal trait for runtime implementations
 pub(super) trait ContainerBackend: Send + Sync {
     fn spawn_container(&self, config: &ContainerConfig) -> Result<()>;
-    fn name(&self) -> &str;
 }
