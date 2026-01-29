@@ -68,7 +68,7 @@
 
               extraPkgs = packages ++ [ entrypoint ];
 
-              Cmd = [ "${entrypoint}/bin/entrypoint" ];
+              Entrypoint = [ "${entrypoint}/bin/entrypoint" ];
 
               # extraFakeRootCommands = ''
               #   mkdir -p .${userHome}/.gnupg
