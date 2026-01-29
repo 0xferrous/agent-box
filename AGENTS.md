@@ -1,7 +1,4 @@
-- always keep the docs and readme in sync with the code changes
 - use `nix develop --command` to run the commands in the flake's devshell
-- always run `cargo fmt` to ensure the code is formatted correctly
-- keep the table of contents in the @README.md up to date whenever a change is made
 - use conventionalcommits.org pattern when writing commit messages
 
 ## pre commit
@@ -9,3 +6,5 @@
 - format code with `cargo fmt`
 - check code with `cargo check`
 - check clippy with `cargo clippy`
+- always keep the docs and readme in sync with the code changes
+- keep the table of contents in the @README.md up to date whenever a change is made
