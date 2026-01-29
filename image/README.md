@@ -19,22 +19,27 @@ cd image
 
 ## Entrypoint Behavior
 
-The image uses an entrypoint that wraps commands with `nix develop`:
+The image uses an entrypoint that wraps commands with `nix develop` when a `flake.nix` is present:
 
+**With `flake.nix` found (searching up the directory tree):**
 - **No arguments**: Runs `nix develop --command bash` (interactive shell in the flake's devshell)
 - **With arguments**: Runs `nix develop --command <args...>` (executes the provided command in the devshell)
 
-This means any mounted project with a `flake.nix` will automatically have its development environment activated.
+**Without `flake.nix` (searching up the directory tree):**
+- **No arguments**: Runs `bash` directly
+- **With arguments**: Runs `<args...>` directly
+
+This means projects with a `flake.nix` automatically get their development environment activated, while other directories work normally.
 
 **Examples:**
 ```bash
-# Interactive shell in devshell
+# Interactive shell in devshell (if flake.nix exists)
 docker run -it agent-box
 
 # Run a specific command in devshell
 docker run -it agent-box cargo build
 
-# Override entrypoint for plain bash
+# Override entrypoint for plain bash (bypass nix develop even with flake.nix)
 docker run -it --entrypoint /bin/bash agent-box
 ```
 

@@ -36,11 +36,20 @@
           userHome = if uid == 0 then "/root" else "/home/${uname}";
 
           # Entrypoint script that runs `nix develop --command <args>` or `nix develop --command bash` if no args
+          # Falls back to direct execution if no flake.nix is found (nix flake metadata searches up the directory tree)
           entrypoint = pkgs.writeShellScriptBin "entrypoint" ''
-            if [ $# -eq 0 ]; then
-              exec nix develop --command bash
+            if nix flake metadata &>/dev/null; then
+              if [ $# -eq 0 ]; then
+                exec nix develop --command bash
+              else
+                exec nix develop --command "$@"
+              fi
             else
-              exec nix develop --command "$@"
+              if [ $# -eq 0 ]; then
+                exec bash
+              else
+                exec "$@"
+              fi
             fi
           '';
 
