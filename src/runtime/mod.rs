@@ -12,6 +12,7 @@ use crate::config::Config;
 pub struct ContainerConfig {
     pub image: String,
     pub entrypoint: Option<Vec<String>>,
+    pub command: Option<Vec<String>>,
     pub user: String,
     pub working_dir: String,
     pub mounts: Vec<String>,
@@ -152,6 +153,7 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<CliMount> {
 /// - source_path: the source repo to mount .git/.jj from
 /// - local: if true, workspace and source are the same, so don't double-mount
 /// - cli_mounts: additional mounts from CLI arguments
+/// - command: command arguments to pass to the container entrypoint
 pub fn build_container_config(
     config: &Config,
     workspace_path: &Path,
@@ -159,6 +161,7 @@ pub fn build_container_config(
     local: bool,
     entrypoint_override: Option<&str>,
     cli_mounts: &[CliMount],
+    command: Option<Vec<String>>,
 ) -> Result<ContainerConfig> {
     let pb_to_str = |pb: &Path| {
         pb.canonicalize()
@@ -221,6 +224,7 @@ pub fn build_container_config(
     Ok(ContainerConfig {
         image: config.runtime.image.clone(),
         entrypoint,
+        command,
         user: format!("{}:{}", uid, gid),
         working_dir: workspace_path_str,
         mounts: binds,

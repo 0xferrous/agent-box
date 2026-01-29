@@ -58,6 +58,9 @@ enum Commands {
         /// Override entrypoint from config
         #[arg(long, short)]
         entrypoint: Option<String>,
+        /// Command to run in the container (passed to entrypoint)
+        #[arg(long, short)]
+        command: Option<Vec<String>>,
         #[arg(long, conflicts_with = "jj")]
         git: bool,
         #[arg(long, conflicts_with = "git", default_value_t = true)]
@@ -145,6 +148,7 @@ fn main() {
             session,
             local,
             entrypoint,
+            command,
             git,
             jj: _,
             new: create_new,
@@ -204,6 +208,7 @@ fn main() {
                 local,
                 entrypoint.as_deref(),
                 &cli_mounts,
+                command,
             ) {
                 Ok(cfg) => cfg,
                 Err(e) => {

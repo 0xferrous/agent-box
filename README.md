@@ -158,8 +158,12 @@ ab spawn -s my-session -r myrepo -n
 # Local mode: use current directory as workspace
 ab spawn -l
 
-# Override entrypoint
-ab spawn -s my-session -e /bin/zsh
+# Run a command in the container (passed to entrypoint)
+ab spawn -s my-session -c pi
+ab spawn -s my-session -c cargo build
+
+# Override entrypoint (bypass nix develop wrapper)
+ab spawn -s my-session -e /bin/bash
 
 # Add additional mounts (home-relative with -m, absolute with -M)
 ab spawn -s my-session -m ~/data -m ro:~/.config/git

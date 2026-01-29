@@ -17,6 +17,7 @@ impl ContainerBackend for PodmanRuntime {
         eprintln!("DEBUG: Creating container with Podman:");
         eprintln!("  Image: {}", config.image);
         eprintln!("  Entrypoint: {:?}", config.entrypoint);
+        eprintln!("  Command: {:?}", config.command);
         eprintln!("  User: {}", config.user);
         eprintln!("  Working dir: {}", config.working_dir);
         eprintln!("  Mounts: {} volumes", config.mounts.len());
@@ -54,6 +55,11 @@ impl ContainerBackend for PodmanRuntime {
 
         // Add image
         args.push(config.image.clone());
+
+        // Add command arguments (passed to entrypoint)
+        if let Some(command) = &config.command {
+            args.extend(command.clone());
+        }
 
         eprintln!("DEBUG: Running: podman {}", args.join(" "));
 

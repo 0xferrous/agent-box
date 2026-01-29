@@ -16,6 +16,7 @@ impl ContainerBackend for DockerRuntime {
         eprintln!("DEBUG: Creating container with Docker:");
         eprintln!("  Image: {}", config.image);
         eprintln!("  Entrypoint: {:?}", config.entrypoint);
+        eprintln!("  Command: {:?}", config.command);
         eprintln!("  User: {}", config.user);
         eprintln!("  Working dir: {}", config.working_dir);
         eprintln!("  Mounts: {} volumes", config.mounts.len());
@@ -51,6 +52,11 @@ impl ContainerBackend for DockerRuntime {
 
         // Add image
         args.push(config.image.clone());
+
+        // Add command arguments (passed to entrypoint)
+        if let Some(command) = &config.command {
+            args.extend(command.clone());
+        }
 
         eprintln!("DEBUG: Running: docker {}", args.join(" "));
 
