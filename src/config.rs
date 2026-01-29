@@ -25,6 +25,14 @@ impl MountPaths {
         self.home_relative
             .extend(other.home_relative.iter().cloned());
     }
+
+    /// Deduplicate mount paths, preserving order (first occurrence wins)
+    pub fn dedup(&mut self) {
+        let mut seen = HashSet::new();
+        self.absolute.retain(|p| seen.insert(p.clone()));
+        seen.clear();
+        self.home_relative.retain(|p| seen.insert(p.clone()));
+    }
 }
 
 #[derive(Debug, Deserialize, Default, Clone, PartialEq)]
@@ -43,6 +51,13 @@ impl MountsConfig {
         self.ro.merge(&other.ro);
         self.rw.merge(&other.rw);
         self.o.merge(&other.o);
+    }
+
+    /// Deduplicate all mount paths
+    pub fn dedup(&mut self) {
+        self.ro.dedup();
+        self.rw.dedup();
+        self.o.dedup();
     }
 }
 
@@ -148,6 +163,9 @@ pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<Res
         let profile_resolved = resolve_single_profile(config, profile_name, &mut HashSet::new())?;
         resolved.merge(&profile_resolved);
     }
+
+    // Deduplicate mounts (exact string match)
+    resolved.mounts.dedup();
 
     Ok(resolved)
 }
@@ -1264,6 +1282,126 @@ mod tests {
 
         // o: extra only
         assert_eq!(resolved.mounts.o.home_relative, vec!["~/.extra-o"]);
+    }
+
+    #[test]
+    fn test_resolve_profiles_mounts_deduplicated() {
+        // Test that identical mount strings are deduplicated when profiles are merged
+        let mut config = make_test_config();
+        config.runtime.mounts.ro.absolute = vec!["/nix/store".to_string()];
+
+        // base profile also has /nix/store
+        config.profiles.insert(
+            "base".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        absolute: vec!["/nix/store".to_string(), "/base-only".to_string()],
+                        home_relative: vec!["~/.config".to_string()],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        // extra profile has same mounts as base (diamond pattern)
+        config.profiles.insert(
+            "extra".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        absolute: vec!["/nix/store".to_string(), "/extra-only".to_string()],
+                        home_relative: vec!["~/.config".to_string()],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        let resolved =
+            resolve_profiles(&config, &["base".to_string(), "extra".to_string()]).unwrap();
+
+        // /nix/store and ~/.config should NOT be duplicated
+        assert_eq!(
+            resolved.mounts.ro.absolute,
+            vec!["/nix/store", "/base-only", "/extra-only"]
+        );
+        assert_eq!(resolved.mounts.ro.home_relative, vec!["~/.config"]);
+    }
+
+    #[test]
+    fn test_resolve_profiles_diamond_mounts_deduplicated() {
+        // Diamond inheritance: git and jj both extend base, dev extends both
+        // Mounts from base should only appear once
+        let mut config = make_test_config();
+
+        config.profiles.insert(
+            "base".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        absolute: vec!["/nix/store".to_string()],
+                        home_relative: vec!["~/.config".to_string()],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        config.profiles.insert(
+            "git".to_string(),
+            ProfileConfig {
+                extends: vec!["base".to_string()],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        absolute: vec![],
+                        home_relative: vec!["~/.gitconfig".to_string()],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        config.profiles.insert(
+            "jj".to_string(),
+            ProfileConfig {
+                extends: vec!["base".to_string()],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        absolute: vec![],
+                        home_relative: vec!["~/.jjconfig.toml".to_string()],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        config.profiles.insert(
+            "dev".to_string(),
+            ProfileConfig {
+                extends: vec!["git".to_string(), "jj".to_string()],
+                mounts: MountsConfig::default(),
+                env: vec![],
+            },
+        );
+
+        let resolved = resolve_profiles(&config, &["dev".to_string()]).unwrap();
+
+        // base's mounts should only appear once despite diamond inheritance
+        assert_eq!(resolved.mounts.ro.absolute, vec!["/nix/store"]);
+        // Order: base (via git), git, base (skipped - already present), jj
+        assert_eq!(
+            resolved.mounts.ro.home_relative,
+            vec!["~/.config", "~/.gitconfig", "~/.jjconfig.toml"]
+        );
     }
 
     #[test]

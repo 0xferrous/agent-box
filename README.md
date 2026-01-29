@@ -247,7 +247,7 @@ Using `-p dev` results in env: `["A=1", "B=2", "C=3"]`
 3. CLI profiles (`-p`) in the order specified
 4. CLI mounts (`-m`, `-M`) applied last
 
-Arrays (mounts, env) are concatenated. Circular dependencies are detected and reported as errors.
+Arrays (mounts, env) are concatenated. Duplicate mount paths (exact string match) are automatically deduplicated - if the same mount spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
 
 **Profiles with layered configuration:**
 
