@@ -21,6 +21,9 @@ Agent Box solves this by:
 - [Why](#why)
 - [Installation](#installation)
 - [Configuration](#configuration)
+  - [Layered Configuration](#layered-configuration)
+  - [Mount Path Syntax](#mount-path-syntax)
+  - [Runtime Backends](#runtime-backends)
 - [Usage](#usage)
   - [Show Repository Information](#show-repository-information)
   - [Create a New Workspace](#create-a-new-workspace)
@@ -48,7 +51,7 @@ base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/
 [runtime]
 backend = "docker"                # Container runtime: "docker" or "podman" (default: docker)
 image = "agent-box:latest"
-entrypoint = ["/bin/bash"]
+entrypoint = "/bin/bash"          # Shell-style command string (supports quotes for args with spaces)
 
 [runtime.mounts.ro]
 absolute = ["/nix/store"]
@@ -64,6 +67,46 @@ home_relative = []
 ```
 
 All paths support `~` expansion and will be canonicalized.
+
+### Layered Configuration
+
+Agent Box supports layered configuration. It loads config files in the following order:
+
+1. `~/.agent-box.toml` (global config, **required**)
+2. `<git_root>/.agent-box.toml` (repo-local config, optional)
+
+**Merge behavior:**
+- **Scalar values** (strings, numbers, booleans, including `entrypoint`): repo-local overrides global
+- **Arrays** (`env`, mount paths): repo-local values are appended to global values
+- **Nested objects**: merged recursively
+
+This allows you to define global defaults in `~/.agent-box.toml` and override or extend them per-repository.
+
+**Example:**
+
+Global config (`~/.agent-box.toml`):
+```toml
+workspace_dir = "~/workspaces"
+base_repo_dir = "~/repos"
+
+[runtime]
+image = "default-agent:latest"
+env = ["EDITOR=nvim"]
+
+[runtime.mounts.ro]
+home_relative = ["~/.config/git"]
+```
+
+Repo-local config (`~/repos/myproject/.agent-box.toml`):
+```toml
+[runtime]
+image = "myproject-agent:latest"  # overrides global
+entrypoint = '/bin/bash -c "nix develop"'  # overrides global (shell-style parsing)
+env = ["PROJECT=myproject"]       # appended: ["EDITOR=nvim", "PROJECT=myproject"]
+
+[runtime.mounts.ro]
+home_relative = ["~/.ssh"]        # appended to global mounts
+```
 
 ### Mount Path Syntax
 

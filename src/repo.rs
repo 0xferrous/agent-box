@@ -6,7 +6,7 @@ use crate::path::RepoIdentifier;
 use crate::path::path_to_str;
 
 /// Find the git root directory by traversing up from the current directory
-fn find_git_root() -> Result<PathBuf> {
+pub fn find_git_root() -> Result<PathBuf> {
     let current_dir =
         std::env::current_dir().wrap_err("Failed to get current working directory")?;
 
