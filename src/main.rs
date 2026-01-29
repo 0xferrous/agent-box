@@ -6,7 +6,7 @@ mod path;
 mod repo;
 mod runtime;
 
-use config::load_config_or_exit;
+use config::{load_config_or_exit, resolve_profiles, validate_config, validate_config_or_err};
 use display::info;
 use repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
 use runtime::{build_container_config, create_runtime};
@@ -78,6 +78,11 @@ enum Commands {
         /// Example: -M /nix/store -M ro:/etc/hosts
         #[arg(long = "Mount", short = 'M', value_name = "MOUNT")]
         mount_abs: Vec<String>,
+        /// Additional profiles to apply (can be specified multiple times).
+        /// Profiles are applied after the default_profile (if set) and in order specified.
+        /// Example: -p git -p rust
+        #[arg(long, short = 'p', value_name = "PROFILE")]
+        profile: Vec<String>,
     },
     /// Debug commands (hidden from main help)
     #[command(hide = true)]
@@ -105,6 +110,8 @@ enum DbgCommands {
         #[arg(long, short)]
         force: bool,
     },
+    /// Validate configuration (profiles, extends, default_profile)
+    Validate,
 }
 
 fn main() {
@@ -154,6 +161,7 @@ fn main() {
             new: create_new,
             mount,
             mount_abs,
+            profile,
         } => {
             let wtype = if git {
                 WorkspaceType::Git
@@ -192,6 +200,21 @@ fn main() {
                 (workspace_path, source_path)
             };
 
+            // Validate config before resolving profiles
+            if let Err(e) = validate_config_or_err(&config) {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+
+            // Resolve profiles (default + CLI-specified)
+            let resolved_profile = match resolve_profiles(&config, &profile) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("Error resolving profiles: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
             // Parse CLI mount arguments
             let cli_mounts = match runtime::parse_cli_mounts(&mount, &mount_abs) {
                 Ok(m) => m,
@@ -207,6 +230,7 @@ fn main() {
                 &source_path,
                 local,
                 entrypoint.as_deref(),
+                &resolved_profile,
                 &cli_mounts,
                 command,
             ) {
@@ -278,6 +302,64 @@ fn main() {
                 // Actually remove
                 if let Err(e) = remove_repo(&config, &repo_id, false) {
                     eprintln!("Error removing repository: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            DbgCommands::Validate => {
+                let result = validate_config(&config);
+
+                // Print errors
+                if !result.errors.is_empty() {
+                    eprintln!("Errors:");
+                    for error in &result.errors {
+                        eprintln!("  ✗ {}", error);
+                    }
+                }
+
+                // Print warnings
+                if !result.warnings.is_empty() {
+                    if !result.errors.is_empty() {
+                        eprintln!();
+                    }
+                    eprintln!("Warnings:");
+                    for warning in &result.warnings {
+                        eprintln!("  ⚠ {}", warning);
+                    }
+                }
+
+                // Print summary
+                if result.is_ok() {
+                    if result.has_warnings() {
+                        println!(
+                            "\nConfiguration valid with {} warning(s).",
+                            result.warnings.len()
+                        );
+                    } else {
+                        println!("Configuration valid. No errors or warnings.");
+                    }
+
+                    // Print profile summary
+                    if !config.profiles.is_empty() {
+                        println!("\nProfiles defined: {}", config.profiles.len());
+                        for (name, profile) in &config.profiles {
+                            let extends_info = if profile.extends.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" (extends: {})", profile.extends.join(", "))
+                            };
+                            println!("  - {}{}", name, extends_info);
+                        }
+                    }
+
+                    if let Some(ref default) = config.default_profile {
+                        println!("\nDefault profile: {}", default);
+                    }
+                } else {
+                    eprintln!(
+                        "\nConfiguration invalid: {} error(s), {} warning(s).",
+                        result.errors.len(),
+                        result.warnings.len()
+                    );
                     std::process::exit(1);
                 }
             }

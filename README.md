@@ -24,10 +24,12 @@ Agent Box solves this by:
   - [Layered Configuration](#layered-configuration)
   - [Mount Path Syntax](#mount-path-syntax)
   - [Runtime Backends](#runtime-backends)
+  - [Profiles](#profiles)
+  - [Validating Configuration](#validating-configuration)
 - [Usage](#usage)
   - [Show Repository Information](#show-repository-information)
   - [Create a New Workspace](#create-a-new-workspace)
-  - [Spawn a Docker Container](#spawn-a-docker-container)
+  - [Spawn a Container](#spawn-a-container)
 - [How It Works](#how-it-works)
 - [How-To](#how-to)
   - [Forward GPG Agent to Containers](#forward-gpg-agent-to-containers)
@@ -160,6 +162,171 @@ Agent Box supports two container runtimes:
 
 **Overlay mounts** allow containers to write to a mounted directory without affecting the host. Changes are stored in a temporary overlay layer that is discarded when the container exits.
 
+### Profiles
+
+Profiles let you define named sets of mounts and environment variables that can be selectively applied when spawning containers. This enables modular, reusable configurations for different toolchains.
+
+**Basic profile definition:**
+
+```toml
+# Default profile applied to all spawn commands (optional)
+default_profile = "base"
+
+[profiles.base]
+env = ["EDITOR=nvim"]
+
+[profiles.base.mounts.ro]
+absolute = ["/nix/store"]
+home_relative = ["~/.config/git"]
+
+[profiles.git]
+extends = ["base"]  # Inherits mounts and env from base
+env = ["GIT_AUTHOR_NAME=You"]
+
+[profiles.git.mounts.ro]
+home_relative = ["~/.gitconfig"]
+
+[profiles.rust]
+env = ["CARGO_HOME=/home/user/.cargo"]
+
+[profiles.rust.mounts.ro]
+home_relative = ["~/.cargo/config.toml"]
+
+[profiles.rust.mounts.rw]
+home_relative = ["~/.cargo/registry"]
+
+[profiles.gpg]
+[profiles.gpg.mounts.o]  # Overlay (Podman only)
+home_relative = ["~/.gnupg"]
+
+[profiles.gpg.mounts.rw]
+home_relative = [
+  "/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent",
+]
+```
+
+**Using profiles:**
+
+```bash
+# Use only default_profile (if set)
+ab spawn -s my-session
+
+# Add specific profiles on top of default
+ab spawn -s my-session -p git
+
+# Combine multiple profiles
+ab spawn -s my-session -p git -p rust -p gpg
+
+# Profiles + additional CLI mounts
+ab spawn -s my-session -p rust -m ~/my-data
+```
+
+**Profile inheritance with `extends`:**
+
+Profiles can inherit from other profiles using the `extends` field. Parent profiles are resolved depth-first, in order:
+
+```toml
+[profiles.base]
+env = ["A=1"]
+
+[profiles.git]
+extends = ["base"]
+env = ["B=2"]
+
+[profiles.dev]
+extends = ["git"]  # Inherits from git, which inherits from base
+env = ["C=3"]
+```
+
+Using `-p dev` results in env: `["A=1", "B=2", "C=3"]`
+
+**Resolution order:**
+
+1. `runtime.mounts` and `runtime.env` (always applied first)
+2. `default_profile` (if set)
+3. CLI profiles (`-p`) in the order specified
+4. CLI mounts (`-m`, `-M`) applied last
+
+Arrays (mounts, env) are concatenated. Circular dependencies are detected and reported as errors.
+
+**Profiles with layered configuration:**
+
+Profiles work with [layered configuration](#layered-configuration). Repo-local profiles can extend profiles defined in the global config:
+
+Global config (`~/.agent-box.toml`):
+```toml
+[profiles.base]
+env = ["EDITOR=nvim"]
+
+[profiles.base.mounts.ro]
+absolute = ["/nix/store"]
+
+[profiles.rust]
+extends = ["base"]
+env = ["CARGO_HOME=~/.cargo"]
+```
+
+Repo-local config (`~/repos/myproject/.agent-box.toml`):
+```toml
+# Override default profile for this repo
+default_profile = "myproject-dev"
+
+# Define a repo-specific profile that extends global "rust"
+[profiles.myproject-dev]
+extends = ["rust"]
+env = ["PROJECT=myproject"]
+
+[profiles.myproject-dev.mounts.rw]
+home_relative = ["~/.local/share/myproject"]
+
+# Add to an existing global profile
+[profiles.rust]
+env = ["RUST_BACKTRACE=1"]  # Appended to global rust.env
+```
+
+This allows:
+- Repo-local profiles extending global profiles
+- Overriding `default_profile` per-repo
+- Adding mounts/env to existing global profiles (arrays are concatenated)
+
+### Validating Configuration
+
+Use `ab dbg validate` to check your profile configuration for errors:
+
+```bash
+ab dbg validate
+```
+
+This validates:
+- `default_profile` references a defined profile
+- All `extends` references point to defined profiles
+- No circular dependencies in `extends` chains
+- No self-references in `extends`
+
+Example output for a valid configuration:
+```
+Configuration valid. No errors or warnings.
+
+Profiles defined: 3
+  - rust (extends: base)
+  - base
+  - git (extends: base)
+
+Default profile: base
+```
+
+Example output with errors:
+```
+Errors:
+  ✗ default_profile 'nonexistent' is not defined. Available profiles: ["base", "git"]
+  ✗ Profile 'broken': extends unknown profile 'also_nonexistent'. Available profiles: ["base", "git"]
+
+Warnings:
+  ⚠ Profile 'empty': profile is empty (no mounts, env, or extends)
+
+Configuration invalid: 2 error(s), 1 warning(s).
+```
+
 ## Usage
 
 ### Show Repository Information
@@ -208,6 +375,9 @@ ab spawn -s my-session -c cargo build
 # Override entrypoint (bypass nix develop wrapper)
 ab spawn -s my-session -e /bin/bash
 
+# Add additional profiles
+ab spawn -s my-session -p git -p rust
+
 # Add additional mounts (home-relative with -m, absolute with -M)
 ab spawn -s my-session -m ~/data -m ro:~/.config/git
 ab spawn -s my-session -M /nix/store -M ro:/etc/hosts
@@ -215,6 +385,9 @@ ab spawn -s my-session -M /nix/store -M ro:/etc/hosts
 # Mount with explicit source:dest mapping
 ab spawn -s my-session -m rw:~/src:/app/src
 ab spawn -s my-session -m /run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent
+
+# Combine profiles with additional mounts
+ab spawn -s my-session -p rust -m ~/project-data
 ```
 
 **Session vs Local mode:**

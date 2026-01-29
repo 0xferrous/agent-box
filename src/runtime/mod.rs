@@ -5,7 +5,7 @@ use docker::ContainerBackend;
 use eyre::Result;
 use std::path::{Path, PathBuf};
 
-use crate::config::Config;
+use crate::config::{Config, MountsConfig, ResolvedProfile};
 
 /// Configuration for running a container
 #[derive(Debug, Clone)]
@@ -152,6 +152,7 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<CliMount> {
 /// - workspace_path: the directory to mount as working directory (rw)
 /// - source_path: the source repo to mount .git/.jj from
 /// - local: if true, workspace and source are the same, so don't double-mount
+/// - resolved_profile: resolved mounts and env from profile resolution
 /// - cli_mounts: additional mounts from CLI arguments
 /// - command: command arguments to pass to the container entrypoint
 pub fn build_container_config(
@@ -160,6 +161,7 @@ pub fn build_container_config(
     source_path: &Path,
     local: bool,
     entrypoint_override: Option<&str>,
+    resolved_profile: &ResolvedProfile,
     cli_mounts: &[CliMount],
     command: Option<Vec<String>>,
 ) -> Result<ContainerConfig> {
@@ -190,18 +192,18 @@ pub fn build_container_config(
     }
 
     // Check for overlay mounts and validate backend
-    let has_config_overlay = !config.runtime.mounts.o.absolute.is_empty()
-        || !config.runtime.mounts.o.home_relative.is_empty();
+    let has_profile_overlay = !resolved_profile.mounts.o.absolute.is_empty()
+        || !resolved_profile.mounts.o.home_relative.is_empty();
     let has_cli_overlay = cli_mounts.iter().any(|m| m.mode == MountMode::Overlay);
 
-    if (has_config_overlay || has_cli_overlay) && config.runtime.backend != "podman" {
+    if (has_profile_overlay || has_cli_overlay) && config.runtime.backend != "podman" {
         return Err(eyre::eyre!(
             "Overlay mounts are only supported with Podman backend, but '{}' is configured",
             config.runtime.backend
         ));
     }
 
-    add_config_mounts(config, &mut binds)?;
+    add_mounts_config(&resolved_profile.mounts, &mut binds)?;
     add_cli_mounts(cli_mounts, &mut binds)?;
 
     let uid = nix::unistd::getuid().as_raw();
@@ -219,7 +221,8 @@ pub fn build_container_config(
         format!("USER={}", username),
         format!("HOME=/home/{}", username),
     ];
-    env.extend(config.runtime.env.iter().cloned());
+    // Use env from resolved profile (includes runtime.env + profile envs)
+    env.extend(resolved_profile.env.iter().cloned());
 
     Ok(ContainerConfig {
         image: config.runtime.image.clone(),
@@ -252,10 +255,8 @@ fn add_cli_mounts(cli_mounts: &[CliMount], binds: &mut Vec<String>) -> Result<()
     Ok(())
 }
 
-/// Add config-defined mounts to the binds vector
-fn add_config_mounts(config: &Config, binds: &mut Vec<String>) -> Result<()> {
-    let mounts = &config.runtime.mounts;
-
+/// Add mounts from a MountsConfig to the binds vector
+fn add_mounts_config(mounts: &MountsConfig, binds: &mut Vec<String>) -> Result<()> {
     // (mount_specs, home_relative, mode)
     let mount_groups: [(&[String], bool, MountMode); 6] = [
         (&mounts.ro.absolute, false, MountMode::Ro),

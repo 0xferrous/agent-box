@@ -312,10 +312,13 @@ mod tests {
 
     fn make_test_config() -> Config {
         use crate::config::RuntimeConfig;
+        use std::collections::HashMap;
 
         Config {
             base_repo_dir: PathBuf::from("/home/user/repos"),
             workspace_dir: PathBuf::from("/mnt/workspace"),
+            default_profile: None,
+            profiles: HashMap::new(),
             runtime: RuntimeConfig {
                 backend: "docker".to_string(),
                 image: "test:latest".to_string(),
@@ -370,6 +373,8 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             workspace_dir: PathBuf::from("/mnt/workspace"),
+            default_profile: None,
+            profiles: std::collections::HashMap::new(),
             runtime: RuntimeConfig {
                 backend: "docker".to_string(),
                 image: "test:latest".to_string(),
@@ -403,6 +408,8 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             workspace_dir: PathBuf::from("/mnt/workspace"),
+            default_profile: None,
+            profiles: std::collections::HashMap::new(),
             runtime: RuntimeConfig {
                 backend: "docker".to_string(),
                 image: "test:latest".to_string(),
@@ -436,6 +443,8 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             workspace_dir: PathBuf::from("/mnt/workspace"),
+            default_profile: None,
+            profiles: std::collections::HashMap::new(),
             runtime: RuntimeConfig {
                 backend: "docker".to_string(),
                 image: "test:latest".to_string(),
