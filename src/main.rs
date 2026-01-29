@@ -65,6 +65,16 @@ enum Commands {
         /// Create workspace if it doesn't exist (equivalent to running `ab new` first)
         #[arg(long, short, conflicts_with = "local")]
         new: bool,
+        /// Additional mount (home-relative). Format: [MODE:]PATH or [MODE:]SRC:DST
+        /// MODE is ro, rw, or o (default: rw). Paths use ~ for home directory.
+        /// Example: -m ~/.config/git -m ro:~/secrets -m rw:~/data:/app/data
+        #[arg(long, short = 'm', value_name = "MOUNT")]
+        mount: Vec<String>,
+        /// Additional mount (absolute). Format: [MODE:]PATH or [MODE:]SRC:DST
+        /// MODE is ro, rw, or o (default: rw). Same path used on host and container.
+        /// Example: -M /nix/store -M ro:/etc/hosts
+        #[arg(long = "Mount", short = 'M', value_name = "MOUNT")]
+        mount_abs: Vec<String>,
     },
     /// Debug commands (hidden from main help)
     #[command(hide = true)]
@@ -138,6 +148,8 @@ fn main() {
             git,
             jj: _,
             new: create_new,
+            mount,
+            mount_abs,
         } => {
             let wtype = if git {
                 WorkspaceType::Git
@@ -176,12 +188,22 @@ fn main() {
                 (workspace_path, source_path)
             };
 
+            // Parse CLI mount arguments
+            let cli_mounts = match runtime::parse_cli_mounts(&mount, &mount_abs) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("Error parsing mount arguments: {}", e);
+                    std::process::exit(1);
+                }
+            };
+
             let container_config = match build_container_config(
                 &config,
                 &workspace_path,
                 &source_path,
                 local,
                 entrypoint.as_deref(),
+                &cli_mounts,
             ) {
                 Ok(cfg) => cfg,
                 Err(e) => {

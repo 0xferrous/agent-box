@@ -160,11 +160,39 @@ ab spawn -l
 
 # Override entrypoint
 ab spawn -s my-session --entrypoint /bin/zsh
+
+# Add additional mounts (home-relative with -m, absolute with -M)
+ab spawn -s my-session -m ~/data -m ro:~/.config/git
+ab spawn -s my-session -M /nix/store -M ro:/etc/hosts
+
+# Mount with explicit source:dest mapping
+ab spawn -s my-session -m rw:~/src:/app/src
+ab spawn -s my-session -m /run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent
 ```
 
 **Session vs Local mode:**
 - `-s/--session`: Creates/uses a separate workspace directory, mounts source repo's `.git`/`.jj` separately
 - `-l/--local`: Uses current directory as both source and workspace (mutually exclusive with `-s`)
+
+**Additional mounts (`-m` and `-M`):**
+
+Add extra mounts beyond what's configured in `~/.agent-box.toml`:
+
+- `-m` / `--mount`: Home-relative mount (container path translates `~` to container user's home)
+- `-M` / `--Mount`: Absolute mount (same path on host and container)
+
+Format: `[MODE:]PATH` or `[MODE:]SRC:DST`
+- `MODE` is optional: `ro` (read-only), `rw` (read-write, default), or `o` (overlay, Podman only)
+- `PATH` must be absolute (`/...`) or home-relative (`~/...`)
+
+Examples:
+```bash
+-m ~/data           # rw mount, ~/data on host → ~/data in container
+-m ro:~/.config     # ro mount
+-M /nix/store       # rw mount, same absolute path on both sides
+-M o:/tmp/cache     # overlay mount (Podman only)
+-m ~/src:/app       # explicit mapping: ~/src on host → /app in container
+```
 
 ## How It Works
 
