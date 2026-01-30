@@ -26,6 +26,7 @@ Agent Box solves this by:
   - [Runtime Backends](#runtime-backends)
   - [Profiles](#profiles)
   - [Validating Configuration](#validating-configuration)
+  - [Previewing Resolved Configuration](#previewing-resolved-configuration)
 - [Usage](#usage)
   - [Show Repository Information](#show-repository-information)
   - [Create a New Workspace](#create-a-new-workspace)
@@ -146,6 +147,51 @@ home_relative = ["~/.config/git"]
 [runtime.mounts.rw]
 # Explicit mapping with different paths
 absolute = ["/host/path:/container/path"]
+```
+
+### Mount Behavior
+
+**Symlink Handling:**
+
+When a mount path contains symlinks, Agent Box automatically mounts the entire symlink chain so that paths resolve identically inside the container:
+
+```bash
+# If you have: ~/mylink -> /tmp/intermediate -> /data/actual
+# Agent Box mounts all three:
+#   ~/mylink:/home/user/mylink:rw
+#   /tmp/intermediate:/tmp/intermediate:rw
+#   /data/actual:/data/actual:rw
+```
+
+This ensures symlinks work correctly in the container.
+
+**Path Coverage & Deduplication:**
+
+Agent Box automatically deduplicates mounts and skips redundant paths:
+
+- Paths are deduplicated by their canonical (resolved) path
+- Subpaths under already-mounted directories are skipped
+- Example: If `/nix/store` is mounted, `/nix/store/package` is redundant
+
+**Mode Compatibility:**
+
+When mounting a path under an already-mounted parent, mode compatibility is enforced:
+
+| Parent Mode | Child Mode | Result |
+|-------------|------------|--------|
+| `ro` | `ro` | Allowed (skip, redundant) |
+| `ro` | `rw` | **Error** - can't write under read-only |
+| `ro` | `O` (overlay) | **Error** - can't overlay under read-only |
+| `rw` | any | Allowed (skip, redundant) |
+| `O` (overlay) | any | Allowed (skip, redundant) |
+
+Example error:
+```toml
+[runtime.mounts.ro]
+absolute = ["/nix/store"]
+
+[profiles.dev.mounts.rw]
+absolute = ["/nix/store/mydata"]  # ERROR: Cannot mount rw under ro parent
 ```
 
 ### Runtime Backends
@@ -325,6 +371,51 @@ Warnings:
   ⚠ Profile 'empty': profile is empty (no mounts, env, or extends)
 
 Configuration invalid: 2 error(s), 1 warning(s).
+```
+
+### Previewing Resolved Configuration
+
+Use `ab dbg resolve` to see the merged configuration after applying profiles:
+
+```bash
+# Show resolved config with just default_profile (if set)
+ab dbg resolve
+
+# Show resolved config with specific profiles
+ab dbg resolve -p rust -p git
+```
+
+This shows the final merged mounts and environment variables after:
+1. Starting with base `runtime.mounts` and `runtime.env`
+2. Applying `default_profile` (if set)
+3. Applying CLI-specified profiles in order
+
+Example output:
+```
+Profiles applied (in order): base → rust
+
+Resolved config:
+
+  Mounts:
+    ro: /nix/store -> /nix/store:/nix/store:ro
+    rw: /nix/var/nix/daemon-socket/ -> /nix/var/nix/daemon-socket:/nix/var/nix/daemon-socket:rw
+    ro: ~/.config/git (home-relative) -> /home/user/.config/git:/home/user/.config/git:ro
+    rw: ~/.cargo (home-relative) -> /home/user/.cargo:/home/user/.cargo:rw
+    O: ~/.gnupg (home-relative) -> /home/user/.gnupg:/home/user/.gnupg:O
+
+  Environment:
+    NIX_REMOTE=daemon
+```
+
+The output shows both the mount spec and the resolved bind string (`host:container:mode`).
+Mounts marked `(home-relative)` will have their host home directory prefix mapped to the container's home directory (e.g., `/home/alice/.cargo` → `/home/bob/.cargo`).
+
+If a mount path contains symlinks, all intermediate symlinks and the final target are mounted so that path resolution works identically in the container:
+```
+    rw: ~/mylink (home-relative) ->
+      /home/user/mylink:/home/user/mylink:rw
+      /home/user/intermediate:/home/user/intermediate:rw  
+      /data/actual:/data/actual:rw
 ```
 
 ## Usage

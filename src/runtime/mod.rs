@@ -5,7 +5,7 @@ use docker::ContainerBackend;
 use eyre::Result;
 use std::path::{Path, PathBuf};
 
-use crate::config::{Config, MountsConfig, ResolvedProfile};
+use crate::config::{Config, Mount, MountMode, ResolvedMount, ResolvedProfile};
 
 /// Configuration for running a container
 #[derive(Debug, Clone)]
@@ -43,53 +43,20 @@ pub fn create_runtime(config: &Config) -> Runtime {
     }
 }
 
-/// Mount mode for container volumes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MountMode {
-    /// Read-only mount
-    Ro,
-    /// Read-write mount
-    Rw,
-    /// Overlay mount (Podman only)
-    Overlay,
-}
-
-impl MountMode {
-    /// Parse mode from string prefix (e.g., "ro:", "rw:", "o:")
-    fn from_prefix(s: &str) -> Option<(Self, &str)> {
-        if let Some(rest) = s.strip_prefix("ro:") {
-            Some((MountMode::Ro, rest))
-        } else if let Some(rest) = s.strip_prefix("rw:") {
-            Some((MountMode::Rw, rest))
-        } else if let Some(rest) = s.strip_prefix("o:") {
-            Some((MountMode::Overlay, rest))
-        } else {
-            None
-        }
-    }
-
-    /// Convert to Docker/Podman mount flag string
-    fn as_str(&self) -> &'static str {
-        match self {
-            MountMode::Ro => "ro",
-            MountMode::Rw => "rw",
-            MountMode::Overlay => "O",
-        }
+/// Parse mode from string prefix (e.g., "ro:", "rw:", "o:")
+fn parse_mode_prefix(s: &str) -> Option<(MountMode, &str)> {
+    if let Some(rest) = s.strip_prefix("ro:") {
+        Some((MountMode::Ro, rest))
+    } else if let Some(rest) = s.strip_prefix("rw:") {
+        Some((MountMode::Rw, rest))
+    } else if let Some(rest) = s.strip_prefix("o:") {
+        Some((MountMode::Overlay, rest))
+    } else {
+        None
     }
 }
 
-/// A parsed CLI mount specification
-#[derive(Debug, Clone, PartialEq)]
-pub struct CliMount {
-    /// The mount specification (path or src:dst)
-    pub spec: String,
-    /// Whether this is home-relative (true) or absolute (false)
-    pub home_relative: bool,
-    /// Mount mode
-    pub mode: MountMode,
-}
-
-/// Parse CLI mount arguments into CliMount structs.
+/// Parse CLI mount arguments into Mount structs.
 ///
 /// Format: `[MODE:]PATH` or `[MODE:]SRC:DST`
 /// - MODE is optional, defaults to "rw"
@@ -99,7 +66,7 @@ pub struct CliMount {
 /// - `~/data` → mode=rw, spec=~/data
 /// - `ro:~/config` → mode=ro, spec=~/config
 /// - `rw:~/src:/app` → mode=rw, spec=~/src:/app
-pub fn parse_cli_mounts(home_relative: &[String], absolute: &[String]) -> Result<Vec<CliMount>> {
+pub fn parse_cli_mounts(home_relative: &[String], absolute: &[String]) -> Result<Vec<Mount>> {
     let mut mounts = Vec::new();
 
     for spec in home_relative {
@@ -114,9 +81,9 @@ pub fn parse_cli_mounts(home_relative: &[String], absolute: &[String]) -> Result
 }
 
 /// Parse a single CLI mount argument.
-fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<CliMount> {
+fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
     // Check for mode prefix (ro:, rw:, o:)
-    let (mode, spec) = match MountMode::from_prefix(arg) {
+    let (mode, spec) = match parse_mode_prefix(arg) {
         Some((mode, rest)) => (mode, rest.to_string()),
         None => (MountMode::Rw, arg.to_string()),
     };
@@ -141,7 +108,7 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<CliMount> {
         ));
     }
 
-    Ok(CliMount {
+    Ok(Mount {
         spec,
         home_relative,
         mode,
@@ -162,7 +129,7 @@ pub fn build_container_config(
     local: bool,
     entrypoint_override: Option<&str>,
     resolved_profile: &ResolvedProfile,
-    cli_mounts: &[CliMount],
+    cli_mounts: &[Mount],
     command: Option<Vec<String>>,
 ) -> Result<ContainerConfig> {
     let pb_to_str = |pb: &Path| {
@@ -171,11 +138,20 @@ pub fn build_container_config(
             .to_string_lossy()
             .to_string()
     };
-    let mount_path_rw = |path: &str| format!("{path}:{path}:rw");
+
+    /// Format a mount as bind string (host:container:mode)
+    pub fn format_bind(host_path: &Path, container_path: &Path, mode: MountMode) -> String {
+        format!(
+            "{}:{}:{}",
+            host_path.display(),
+            container_path.display(),
+            mode.as_str()
+        )
+    }
 
     let workspace_path_str = pb_to_str(workspace_path);
 
-    let mut binds = vec![mount_path_rw(&workspace_path_str)];
+    let mut binds = vec![format_bind(workspace_path, workspace_path, MountMode::Rw)];
 
     // Mount source repo's .git and .jj directories only if not local
     // (in local mode, workspace IS the source, so they're already included)
@@ -184,27 +160,31 @@ pub fn build_container_config(
         let source_jj = source_path.join(".jj");
 
         if source_git.exists() {
-            binds.push(mount_path_rw(&pb_to_str(&source_git)));
+            binds.push(format_bind(&source_git, &source_git, MountMode::Rw));
         }
         if source_jj.exists() {
-            binds.push(mount_path_rw(&pb_to_str(&source_jj)));
+            binds.push(format_bind(&source_jj, &source_jj, MountMode::Rw));
         }
     }
 
-    // Check for overlay mounts and validate backend
-    let has_profile_overlay = !resolved_profile.mounts.o.absolute.is_empty()
-        || !resolved_profile.mounts.o.home_relative.is_empty();
-    let has_cli_overlay = cli_mounts.iter().any(|m| m.mode == MountMode::Overlay);
+    // Combine profile mounts and CLI mounts
+    let all_mounts: Vec<&Mount> = resolved_profile
+        .mounts
+        .iter()
+        .chain(cli_mounts.iter())
+        .collect();
 
-    if (has_profile_overlay || has_cli_overlay) && config.runtime.backend != "podman" {
+    // Check for overlay mounts and validate backend
+    let has_overlay = all_mounts.iter().any(|m| m.mode == MountMode::Overlay);
+
+    if has_overlay && config.runtime.backend != "podman" {
         return Err(eyre::eyre!(
             "Overlay mounts are only supported with Podman backend, but '{}' is configured",
             config.runtime.backend
         ));
     }
 
-    add_mounts_config(&resolved_profile.mounts, &mut binds)?;
-    add_cli_mounts(cli_mounts, &mut binds)?;
+    add_mounts(&all_mounts, &mut binds)?;
 
     let uid = nix::unistd::getuid().as_raw();
     let gid = nix::unistd::getgid().as_raw();
@@ -235,200 +215,214 @@ pub fn build_container_config(
     })
 }
 
-/// Add CLI-specified mounts to the binds vector
-fn add_cli_mounts(cli_mounts: &[CliMount], binds: &mut Vec<String>) -> Result<()> {
-    for cli_mount in cli_mounts {
-        let (host_path, container_path) = resolve_mount(&cli_mount.spec, cli_mount.home_relative)?;
-
-        if !PathBuf::from(&host_path).exists() {
-            return Err(eyre::eyre!("Mount does not exist: {}", cli_mount.spec));
+/// Check if a path is covered by any existing mount (exact match or subpath).
+/// Returns Some(existing_mode) if covered, None if not covered.
+fn find_covering_mount(host_path: &Path, existing_mounts: &[ResolvedMount]) -> Option<MountMode> {
+    for mount in existing_mounts {
+        // Exact match - already mounted
+        if host_path == mount.host {
+            return Some(mount.mode);
         }
 
-        binds.push(format!(
-            "{}:{}:{}",
-            host_path,
-            container_path,
-            cli_mount.mode.as_str()
-        ));
+        // Check if new path is under existing mount
+        if host_path.starts_with(&mount.host) {
+            return Some(mount.mode);
+        }
     }
-
-    Ok(())
+    None
 }
 
-/// Add mounts from a MountsConfig to the binds vector
-fn add_mounts_config(mounts: &MountsConfig, binds: &mut Vec<String>) -> Result<()> {
-    // (mount_specs, home_relative, mode)
-    let mount_groups: [(&[String], bool, MountMode); 6] = [
-        (&mounts.ro.absolute, false, MountMode::Ro),
-        (&mounts.ro.home_relative, true, MountMode::Ro),
-        (&mounts.rw.absolute, false, MountMode::Rw),
-        (&mounts.rw.home_relative, true, MountMode::Rw),
-        (&mounts.o.absolute, false, MountMode::Overlay),
-        (&mounts.o.home_relative, true, MountMode::Overlay),
-    ];
+/// Check if mode combination is invalid (child under parent).
+/// Returns true if the combination should error.
+fn is_incompatible_mode_combination(parent: MountMode, child: MountMode) -> bool {
+    matches!(
+        (parent, child),
+        (MountMode::Ro, MountMode::Rw) | (MountMode::Ro, MountMode::Overlay)
+    )
+}
 
-    for (specs, home_relative, mode) in mount_groups {
-        for mount_spec in specs {
-            let (host_path, container_path) = resolve_mount(mount_spec, home_relative)?;
-
-            if !PathBuf::from(&host_path).exists() {
-                return Err(eyre::eyre!("Mount does not exist: {}", mount_spec));
+/// Add mounts to the binds vector.
+/// Handles symlinks by mounting the entire symlink chain.
+/// Skips paths that are already covered by a parent mount.
+/// Returns error if trying to mount rw/overlay under a ro parent.
+///
+/// Mount mode compatibility matrix (existing parent → new child):
+///
+/// | Parent | Child | Action |
+/// |--------|-------|--------|
+/// | ro     | ro    | Skip (covered) |
+/// | ro     | rw    | **Error** (can't write under ro) |
+/// | ro     | O     | **Error** (can't overlay under ro) |
+/// | rw     | ro    | Skip (covered, ro ⊆ rw) |
+/// | rw     | rw    | Skip (covered) |
+/// | rw     | O     | Skip (covered) |
+/// | O      | ro    | Skip (covered) |
+/// | O      | rw    | Skip (covered) |
+/// | O      | O     | Skip (covered) |
+fn add_mounts(mounts: &[&Mount], binds: &mut Vec<String>) -> Result<()> {
+    // Parse existing binds into resolved mounts for coverage checking
+    let mut existing_resolved: Vec<ResolvedMount> = binds
+        .iter()
+        .filter_map(|b| {
+            let parts: Vec<&str> = b.split(':').collect();
+            if parts.len() >= 3 {
+                Some(ResolvedMount {
+                    host: PathBuf::from(parts[0]),
+                    container: PathBuf::from(parts[1]),
+                    mode: parts[2].parse().unwrap_or(MountMode::Rw),
+                })
+            } else {
+                None
             }
+        })
+        .collect();
 
-            binds.push(format!(
-                "{}:{}:{}",
-                host_path,
-                container_path,
-                mode.as_str()
-            ));
+    for mount in mounts {
+        // to_resolved_mounts handles existence check and symlink chain
+        let mount_resolved = mount.to_resolved_mounts()?;
+
+        for resolved in mount_resolved {
+            if let Some(existing_mode) = find_covering_mount(&resolved.host, &existing_resolved) {
+                // Check for invalid mode combinations
+                if is_incompatible_mode_combination(existing_mode, resolved.mode) {
+                    return Err(eyre::eyre!(
+                        "Cannot mount '{}' as {} under read-only parent mount",
+                        resolved.host.display(),
+                        resolved.mode
+                    ));
+                }
+                // Otherwise skip - already covered
+            } else {
+                // Not covered - add to existing resolved mounts and binds
+                binds.push(resolved.to_bind_string());
+                existing_resolved.push(resolved);
+            }
         }
     }
 
     Ok(())
-}
-
-/// Resolve a mount spec into (host_path, container_path).
-///
-/// Mount spec can be:
-/// - A single path: uses same path for host and container (with home translation if `home_relative`)
-/// - A `source:dest` mapping: explicit different paths
-///
-/// Paths must be absolute (`/...`) or home-relative (`~/...`).
-///
-/// The `home_relative` flag controls how single-path specs are handled:
-/// - `home_relative = false` (absolute): `/home/host/.config` → `/home/host/.config` (same path)
-/// - `home_relative = true`: `/home/host/.config` → `/home/container/.config` (home prefix replaced)
-///
-/// With explicit `source:dest` mapping, `~` expands to host home for source, container home for dest.
-fn resolve_mount(mount_spec: &str, home_relative: bool) -> Result<(String, String)> {
-    use eyre::WrapErr;
-
-    let host_home = std::env::var("HOME").wrap_err("Failed to get HOME environment variable")?;
-    let container_user = std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_else(|_| "user".to_string());
-    let container_home = format!("/home/{}", container_user);
-
-    let (host_expanded, container_path) =
-        resolve_mount_with_homes(mount_spec, home_relative, &host_home, &container_home)?;
-
-    // Canonicalize host path (must exist)
-    let host_canonical = PathBuf::from(&host_expanded)
-        .canonicalize()
-        .wrap_err(format!(
-            "Failed to canonicalize host path: {}",
-            host_expanded
-        ))?
-        .to_string_lossy()
-        .to_string();
-
-    // If container path was derived from host path (no explicit dest, not home_relative),
-    // we need to update it to use the canonical path
-    let container_path = if container_path == host_expanded {
-        host_canonical.clone()
-    } else if home_relative && !mount_spec.contains(':') {
-        // Re-derive with canonical path for home_relative
-        if let Some(suffix) = host_canonical.strip_prefix(&host_home) {
-            format!("{}{}", container_home, suffix)
-        } else {
-            host_canonical.clone()
-        }
-    } else {
-        container_path
-    };
-
-    Ok((host_canonical, container_path))
-}
-
-/// Inner mount resolution logic, takes home directories as parameters for testability.
-/// Returns (host_expanded, container_path) where host_expanded is NOT canonicalized.
-fn resolve_mount_with_homes(
-    mount_spec: &str,
-    home_relative: bool,
-    host_home: &str,
-    container_home: &str,
-) -> Result<(String, String)> {
-    use eyre::WrapErr;
-
-    // Split on ':' to check for explicit source:dest mapping
-    let (host_spec, container_spec, has_explicit_dest) = match mount_spec.find(':') {
-        Some(idx) => (&mount_spec[..idx], &mount_spec[idx + 1..], true),
-        None => (mount_spec, mount_spec, false),
-    };
-
-    // Expand host path (~ -> host home)
-    let host_expanded = expand_mount_path(host_spec, host_home)
-        .wrap_err_with(|| format!("Invalid host path in mount: {}", mount_spec))?;
-
-    // Determine container path
-    let container_path = if has_explicit_dest {
-        // Explicit dest: expand ~ to container home
-        expand_mount_path(container_spec, container_home)
-            .wrap_err_with(|| format!("Invalid container path in mount: {}", mount_spec))?
-    } else if home_relative {
-        // No explicit dest + home_relative: replace host home prefix with container home
-        if let Some(suffix) = host_expanded.strip_prefix(host_home) {
-            format!("{}{}", container_home, suffix)
-        } else {
-            // Path not under host home, use as-is
-            host_expanded.clone()
-        }
-    } else {
-        // No explicit dest + absolute: same path on both sides
-        host_expanded.clone()
-    };
-
-    Ok((host_expanded, container_path))
-}
-
-/// Expand a mount path. Paths must be absolute (`/...`) or home-relative (`~/...`).
-fn expand_mount_path(path: &str, home: &str) -> Result<String> {
-    if path.starts_with('~') {
-        Ok(path.replacen('~', home, 1))
-    } else if path.starts_with('/') {
-        Ok(path.to_string())
-    } else {
-        Err(eyre::eyre!(
-            "Path must be absolute (/...) or home-relative (~/...): {}",
-            path
-        ))
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_resolved_mount_to_bind_string() {
+        let resolved = ResolvedMount {
+            host: PathBuf::from("/host/path"),
+            container: PathBuf::from("/container/path"),
+            mode: MountMode::Ro,
+        };
+        assert_eq!(resolved.to_bind_string(), "/host/path:/container/path:ro");
+    }
+
+    #[test]
+    fn test_resolved_mount_overlay() {
+        let resolved = ResolvedMount {
+            host: PathBuf::from("/host"),
+            container: PathBuf::from("/container"),
+            mode: MountMode::Overlay,
+        };
+        assert_eq!(resolved.to_bind_string(), "/host:/container:O");
+    }
+
+    #[test]
+    fn test_is_incompatible_mode_combination() {
+        // ro parent
+        assert!(is_incompatible_mode_combination(
+            MountMode::Ro,
+            MountMode::Rw
+        ));
+        assert!(is_incompatible_mode_combination(
+            MountMode::Ro,
+            MountMode::Overlay
+        ));
+        assert!(!is_incompatible_mode_combination(
+            MountMode::Ro,
+            MountMode::Ro
+        ));
+
+        // rw parent - all allowed
+        assert!(!is_incompatible_mode_combination(
+            MountMode::Rw,
+            MountMode::Ro
+        ));
+        assert!(!is_incompatible_mode_combination(
+            MountMode::Rw,
+            MountMode::Rw
+        ));
+        assert!(!is_incompatible_mode_combination(
+            MountMode::Rw,
+            MountMode::Overlay
+        ));
+
+        // overlay parent - all allowed
+        assert!(!is_incompatible_mode_combination(
+            MountMode::Overlay,
+            MountMode::Ro
+        ));
+        assert!(!is_incompatible_mode_combination(
+            MountMode::Overlay,
+            MountMode::Rw
+        ));
+        assert!(!is_incompatible_mode_combination(
+            MountMode::Overlay,
+            MountMode::Overlay
+        ));
+    }
+
+    #[test]
+    fn test_find_covering_mount_exact_match() {
+        let mounts = vec![ResolvedMount {
+            host: PathBuf::from("/host/path"),
+            container: PathBuf::from("/container/path"),
+            mode: MountMode::Ro,
+        }];
+        let result = find_covering_mount(Path::new("/host/path"), &mounts);
+        assert_eq!(result, Some(MountMode::Ro));
+    }
+
+    #[test]
+    fn test_find_covering_mount_subpath() {
+        let mounts = vec![ResolvedMount {
+            host: PathBuf::from("/nix/store"),
+            container: PathBuf::from("/nix/store"),
+            mode: MountMode::Ro,
+        }];
+        let result = find_covering_mount(Path::new("/nix/store/abc123-package"), &mounts);
+        assert_eq!(result, Some(MountMode::Ro));
+    }
+
+    #[test]
+    fn test_find_covering_mount_not_covered() {
+        let mounts = vec![ResolvedMount {
+            host: PathBuf::from("/nix/store"),
+            container: PathBuf::from("/nix/store"),
+            mode: MountMode::Ro,
+        }];
+        let result = find_covering_mount(Path::new("/home/user"), &mounts);
+        assert_eq!(result, None);
+    }
+
     const HOST_HOME: &str = "/home/hostuser";
     const CONTAINER_HOME: &str = "/home/containeruser";
 
-    #[test]
-    fn test_expand_mount_path_tilde() {
-        assert_eq!(
-            expand_mount_path("~/.config", HOST_HOME).unwrap(),
-            "/home/hostuser/.config"
-        );
-    }
-
-    #[test]
-    fn test_expand_mount_path_absolute() {
-        assert_eq!(
-            expand_mount_path("/nix/store", HOST_HOME).unwrap(),
-            "/nix/store"
-        );
-    }
-
-    #[test]
-    fn test_expand_mount_path_relative_rejected() {
-        assert!(expand_mount_path(".config", HOST_HOME).is_err());
-        assert!(expand_mount_path("config/git", HOST_HOME).is_err());
+    /// Helper to create a Mount and resolve with test homes (without canonicalization)
+    fn resolve_test(spec: &str, home_relative: bool) -> (String, String) {
+        let mount = Mount {
+            spec: spec.to_string(),
+            home_relative,
+            mode: MountMode::Rw,
+        };
+        // Use resolve_paths directly to avoid canonicalization in tests
+        mount.resolve_paths(HOST_HOME, CONTAINER_HOME).unwrap()
     }
 
     #[test]
     fn test_resolve_absolute_single_path() {
         // absolute (home_relative=false): same path on both sides
-        let (host, container) =
-            resolve_mount_with_homes("/nix/store", false, HOST_HOME, CONTAINER_HOME).unwrap();
+        let (host, container) = resolve_test("/nix/store", false);
         assert_eq!(host, "/nix/store");
         assert_eq!(container, "/nix/store");
     }
@@ -436,8 +430,7 @@ mod tests {
     #[test]
     fn test_resolve_absolute_single_path_with_tilde() {
         // absolute with ~: expands to host home, container gets same absolute path
-        let (host, container) =
-            resolve_mount_with_homes("~/.config", false, HOST_HOME, CONTAINER_HOME).unwrap();
+        let (host, container) = resolve_test("~/.config", false);
         assert_eq!(host, "/home/hostuser/.config");
         assert_eq!(container, "/home/hostuser/.config"); // same path, NOT translated
     }
@@ -445,8 +438,7 @@ mod tests {
     #[test]
     fn test_resolve_home_relative_single_path() {
         // home_relative=true: host home prefix replaced with container home
-        let (host, container) =
-            resolve_mount_with_homes("~/.config", true, HOST_HOME, CONTAINER_HOME).unwrap();
+        let (host, container) = resolve_test("~/.config", true);
         assert_eq!(host, "/home/hostuser/.config");
         assert_eq!(container, "/home/containeruser/.config"); // translated!
     }
@@ -454,8 +446,7 @@ mod tests {
     #[test]
     fn test_resolve_home_relative_path_not_under_home() {
         // home_relative=true but path not under home: use as-is
-        let (host, container) =
-            resolve_mount_with_homes("/nix/store", true, HOST_HOME, CONTAINER_HOME).unwrap();
+        let (host, container) = resolve_test("/nix/store", true);
         assert_eq!(host, "/nix/store");
         assert_eq!(container, "/nix/store");
     }
@@ -463,13 +454,7 @@ mod tests {
     #[test]
     fn test_resolve_explicit_mapping_absolute() {
         // Explicit source:dest mapping
-        let (host, container) = resolve_mount_with_homes(
-            "/host/path:/container/path",
-            false,
-            HOST_HOME,
-            CONTAINER_HOME,
-        )
-        .unwrap();
+        let (host, container) = resolve_test("/host/path:/container/path", false);
         assert_eq!(host, "/host/path");
         assert_eq!(container, "/container/path");
     }
@@ -477,13 +462,7 @@ mod tests {
     #[test]
     fn test_resolve_explicit_mapping_with_tilde() {
         // Explicit mapping with ~ on dest side expands to container home
-        let (host, container) = resolve_mount_with_homes(
-            "/run/user/1000/gnupg:~/.gnupg",
-            true,
-            HOST_HOME,
-            CONTAINER_HOME,
-        )
-        .unwrap();
+        let (host, container) = resolve_test("/run/user/1000/gnupg:~/.gnupg", true);
         assert_eq!(host, "/run/user/1000/gnupg");
         assert_eq!(container, "/home/containeruser/.gnupg");
     }
@@ -491,10 +470,324 @@ mod tests {
     #[test]
     fn test_resolve_explicit_mapping_tilde_both_sides() {
         // ~ on both sides: host ~ -> host home, container ~ -> container home
-        let (host, container) =
-            resolve_mount_with_homes("~/.foo:~/.bar", false, HOST_HOME, CONTAINER_HOME).unwrap();
+        let (host, container) = resolve_test("~/.foo:~/.bar", false);
         assert_eq!(host, "/home/hostuser/.foo");
         assert_eq!(container, "/home/containeruser/.bar");
+    }
+
+    #[test]
+    fn test_add_mounts_skips_covered_paths() {
+        // Test that symlink chain paths under already-mounted directories are skipped
+        let mut binds = vec!["/nix/store:/nix/store:ro".to_string()];
+
+        // Create a temp symlink that points into /nix/store (simulated)
+        let temp_dir = std::env::temp_dir().join(format!("ab_covered_{}", std::process::id()));
+        let link_path = temp_dir.join("mylink");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create symlink to /nix/store (which exists)
+        std::os::unix::fs::symlink("/nix/store", &link_path).unwrap();
+
+        let mount = Mount {
+            spec: link_path.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have 2 mounts: original /nix/store and the symlink itself
+        // The symlink target (/nix/store) should NOT be added again
+        assert_eq!(binds.len(), 2);
+        assert!(binds[0].starts_with("/nix/store:"));
+        assert!(binds[1].contains("mylink"));
+    }
+
+    #[test]
+    fn test_add_mounts_ro_under_rw_allowed() {
+        // ro mount under rw parent should be skipped (covered)
+        let temp_dir = std::env::temp_dir().join(format!("ab_ro_rw_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:rw", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount (subdir skipped as covered by parent)
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_rw_under_ro_error() {
+        // rw mount under ro parent should error
+        let temp_dir = std::env::temp_dir().join(format!("ab_rw_ro_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:ro", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        let result = add_mounts(&[&mount], &mut binds);
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("read-only"));
+    }
+
+    #[test]
+    fn test_add_mounts_overlay_under_ro_error() {
+        // overlay mount under ro parent should error
+        let temp_dir = std::env::temp_dir().join(format!("ab_o_ro_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:ro", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Overlay,
+        };
+
+        let result = add_mounts(&[&mount], &mut binds);
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("read-only"));
+    }
+
+    #[test]
+    fn test_add_mounts_ro_under_ro_skipped() {
+        // ro mount under ro parent should be skipped
+        let temp_dir = std::env::temp_dir().join(format!("ab_ro_ro_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:ro", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_rw_under_rw_skipped() {
+        // rw mount under rw parent should be skipped
+        let temp_dir = std::env::temp_dir().join(format!("ab_rw_rw_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:rw", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_overlay_under_rw_skipped() {
+        // overlay mount under rw parent should be skipped
+        let temp_dir = std::env::temp_dir().join(format!("ab_o_rw_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:rw", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Overlay,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_ro_under_overlay_skipped() {
+        // ro mount under overlay parent should be skipped
+        let temp_dir = std::env::temp_dir().join(format!("ab_ro_o_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:O", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_rw_under_overlay_skipped() {
+        // rw mount under overlay parent should be skipped
+        let temp_dir = std::env::temp_dir().join(format!("ab_rw_o_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:O", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_overlay_under_overlay_skipped() {
+        // overlay mount under overlay parent should be skipped
+        let temp_dir = std::env::temp_dir().join(format!("ab_o_o_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:O", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Overlay,
+        };
+
+        add_mounts(&[&mount], &mut binds).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_mount_equality_same_spec() {
+        let m1 = Mount {
+            spec: "~/.config".to_string(),
+            home_relative: true,
+            mode: MountMode::Ro,
+        };
+        let m2 = Mount {
+            spec: "~/.config".to_string(),
+            home_relative: true,
+            mode: MountMode::Ro,
+        };
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn test_mount_equality_different_mode() {
+        let m1 = Mount {
+            spec: "~/.config".to_string(),
+            home_relative: true,
+            mode: MountMode::Ro,
+        };
+        let m2 = Mount {
+            spec: "~/.config".to_string(),
+            home_relative: true,
+            mode: MountMode::Rw,
+        };
+        assert_ne!(m1, m2);
+    }
+
+    #[test]
+    fn test_mount_equality_equivalent_paths() {
+        // These resolve to the same paths, so should be equal
+        let m1 = Mount {
+            spec: "/nix/store".to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+        let m2 = Mount {
+            spec: "/nix/store".to_string(),
+            home_relative: true, // different flag, but resolves same
+            mode: MountMode::Ro,
+        };
+        assert_eq!(m1, m2);
     }
 
     // CLI mount parsing tests
@@ -619,20 +912,20 @@ mod tests {
     }
 
     #[test]
-    fn test_mount_mode_from_prefix() {
+    fn test_parse_mode_prefix() {
         assert_eq!(
-            MountMode::from_prefix("ro:~/data"),
+            parse_mode_prefix("ro:~/data"),
             Some((MountMode::Ro, "~/data"))
         );
         assert_eq!(
-            MountMode::from_prefix("rw:/path"),
+            parse_mode_prefix("rw:/path"),
             Some((MountMode::Rw, "/path"))
         );
         assert_eq!(
-            MountMode::from_prefix("o:~/.gnupg"),
+            parse_mode_prefix("o:~/.gnupg"),
             Some((MountMode::Overlay, "~/.gnupg"))
         );
-        assert_eq!(MountMode::from_prefix("~/data"), None);
-        assert_eq!(MountMode::from_prefix("/nix/store"), None);
+        assert_eq!(parse_mode_prefix("~/data"), None);
+        assert_eq!(parse_mode_prefix("/nix/store"), None);
     }
 }

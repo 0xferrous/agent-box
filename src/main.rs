@@ -6,7 +6,10 @@ mod path;
 mod repo;
 mod runtime;
 
-use config::{load_config_or_exit, resolve_profiles, validate_config, validate_config_or_err};
+use config::{
+    collect_profiles_to_apply, load_config_or_exit, resolve_profiles, validate_config,
+    validate_config_or_err,
+};
 use display::info;
 use repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
 use runtime::{build_container_config, create_runtime};
@@ -112,6 +115,14 @@ enum DbgCommands {
     },
     /// Validate configuration (profiles, extends, default_profile)
     Validate,
+    /// Show resolved/merged configuration from profiles
+    Resolve {
+        /// Profiles to apply (can be specified multiple times).
+        /// If none specified, shows resolution with just default_profile (if set).
+        /// Example: -p git -p rust
+        #[arg(long, short = 'p', value_name = "PROFILE")]
+        profile: Vec<String>,
+    },
 }
 
 fn main() {
@@ -361,6 +372,73 @@ fn main() {
                         result.warnings.len()
                     );
                     std::process::exit(1);
+                }
+            }
+            DbgCommands::Resolve { profile } => {
+                // Validate config first
+                if let Err(e) = validate_config_or_err(&config) {
+                    eprintln!("Configuration error: {}", e);
+                    std::process::exit(1);
+                }
+
+                // Show which profiles will be applied
+                let profiles_applied = collect_profiles_to_apply(&config, &profile);
+
+                if profiles_applied.is_empty() {
+                    println!("No profiles to apply (no default_profile set, no -p flags)");
+                    println!("\nBase runtime config:");
+                } else {
+                    println!(
+                        "Profiles applied (in order): {}",
+                        profiles_applied.join(" → ")
+                    );
+                    println!("\nResolved config:");
+                }
+
+                // Resolve profiles
+                match resolve_profiles(&config, &profile) {
+                    Ok(resolved) => {
+                        // Show mounts
+                        println!("\n  Mounts:");
+                        if resolved.mounts.is_empty() {
+                            println!("    (none)");
+                        } else {
+                            for m in &resolved.mounts {
+                                match m.to_resolved_mounts() {
+                                    Ok(resolved_mounts) => {
+                                        if resolved_mounts.len() == 1 {
+                                            println!(
+                                                "    {} -> {}",
+                                                m,
+                                                resolved_mounts[0].to_bind_string()
+                                            );
+                                        } else {
+                                            // Multiple resolved_mounts (symlink chain)
+                                            println!("    {} ->", m);
+                                            for rm in resolved_mounts {
+                                                println!("      {}", rm.to_bind_string());
+                                            }
+                                        }
+                                    }
+                                    Err(e) => println!("    {} -> ERROR: {}", m, e),
+                                }
+                            }
+                        }
+
+                        // Show env
+                        println!("\n  Environment:");
+                        if resolved.env.is_empty() {
+                            println!("    (none)");
+                        } else {
+                            for e in &resolved.env {
+                                println!("    {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error resolving profiles: {}", e);
+                        std::process::exit(1);
+                    }
                 }
             }
         },

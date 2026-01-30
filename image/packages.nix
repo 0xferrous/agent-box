@@ -23,6 +23,8 @@ with pkgs; [
   tokei
   file
   comma
+  dua
+  yazi
 
   aiTools.pi
   aiTools.claude-code

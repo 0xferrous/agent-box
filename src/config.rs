@@ -4,11 +4,391 @@ use figment::{
     providers::{Format, Toml},
 };
 use serde::{Deserialize, Deserializer};
-use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::PathBuf;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use crate::path::expand_path;
 use crate::repo::find_git_root;
+
+/// Mount mode for container volumes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MountMode {
+    /// Read-only mount
+    Ro,
+    /// Read-write mount
+    Rw,
+    /// Overlay mount (Podman only)
+    Overlay,
+}
+
+impl FromStr for MountMode {
+    type Err = eyre::ErrReport;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "ro" => Ok(MountMode::Ro),
+            "rw" => Ok(MountMode::Rw),
+            "o" | "O" => Ok(MountMode::Overlay),
+            _ => Err(eyre::eyre!("Invalid mount mode: {}", s)),
+        }
+    }
+}
+
+impl MountMode {
+    /// Convert to Docker/Podman mount flag string
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MountMode::Ro => "ro",
+            MountMode::Rw => "rw",
+            MountMode::Overlay => "O",
+        }
+    }
+
+    pub fn is_ro(&self) -> bool {
+        matches!(self, MountMode::Ro)
+    }
+
+    pub fn is_rw(&self) -> bool {
+        matches!(self, MountMode::Rw)
+    }
+
+    pub fn is_overlay(&self) -> bool {
+        matches!(self, MountMode::Overlay)
+    }
+}
+
+impl fmt::Display for MountMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// A resolved mount ready for use (after path expansion and canonicalization)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedMount {
+    pub host: PathBuf,
+    pub container: PathBuf,
+    pub mode: MountMode,
+}
+
+impl ResolvedMount {
+    /// Format as bind string for docker/podman -v flag
+    pub fn to_bind_string(&self) -> String {
+        format!(
+            "{}:{}:{}",
+            self.host.display(),
+            self.container.display(),
+            self.mode.as_str()
+        )
+    }
+}
+
+/// A unified mount specification with mode, path spec, and home-relative flag.
+///
+/// Two mounts are considered equal if they resolve to the same bind string
+/// (same host path, container path, and mode).
+#[derive(Debug, Clone)]
+pub struct Mount {
+    /// The mount specification (path or src:dst)
+    pub spec: String,
+    /// Whether this is home-relative (true) or absolute (false)
+    pub home_relative: bool,
+    /// Mount mode
+    pub mode: MountMode,
+}
+
+impl Mount {
+    /// Resolve this mount to (host_path, container_path).
+    ///
+    /// The spec can be:
+    /// - A single path: uses same path for host and container (with home translation if `home_relative`)
+    /// - A `source:dest` mapping: explicit different paths
+    ///
+    /// Paths must be absolute (`/...`) or home-relative (`~/...`).
+    ///
+    /// The `home_relative` flag controls how single-path specs are handled:
+    /// - `home_relative = false` (absolute): `/home/host/.config` → `/home/host/.config` (same path)
+    /// - `home_relative = true`: `/home/host/.config` → `/home/container/.config` (home prefix replaced)
+    ///
+    /// With explicit `source:dest` mapping, `~` expands to host home for source, container home for dest.
+    pub fn resolve(&self) -> Result<(String, String)> {
+        let host_home =
+            std::env::var("HOME").wrap_err("Failed to get HOME environment variable")?;
+        let container_user = std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .unwrap_or_else(|_| "user".to_string());
+        let container_home = format!("/home/{}", container_user);
+
+        self.resolve_with_homes(&host_home, &container_home)
+    }
+
+    /// Resolve with explicit home directories (for testing).
+    /// Returns (host_path, container_path) with host path canonicalized.
+    pub fn resolve_with_homes(
+        &self,
+        host_home: &str,
+        container_home: &str,
+    ) -> Result<(String, String)> {
+        let (host_expanded, container_path) = self.resolve_paths(host_home, container_home)?;
+
+        // Canonicalize host path (must exist)
+        let host_canonical = PathBuf::from(&host_expanded)
+            .canonicalize()
+            .wrap_err(format!(
+                "Failed to canonicalize host path: {}",
+                host_expanded
+            ))?
+            .to_string_lossy()
+            .to_string();
+
+        // If container path was derived from host path (no explicit dest, not home_relative),
+        // we need to update it to use the canonical path
+        let container_path = if container_path == host_expanded {
+            host_canonical.clone()
+        } else if self.home_relative && !self.spec.contains(':') {
+            // Re-derive with canonical path for home_relative
+            if let Some(suffix) = host_canonical.strip_prefix(host_home) {
+                format!("{}{}", container_home, suffix)
+            } else {
+                host_canonical.clone()
+            }
+        } else {
+            container_path
+        };
+
+        Ok((host_canonical, container_path))
+    }
+
+    /// Inner resolution logic without canonicalization.
+    /// Public for testing purposes.
+    pub fn resolve_paths(&self, host_home: &str, container_home: &str) -> Result<(String, String)> {
+        // Split on ':' to check for explicit source:dest mapping
+        let (host_spec, container_spec, has_explicit_dest) = match self.spec.find(':') {
+            Some(idx) => (&self.spec[..idx], &self.spec[idx + 1..], true),
+            None => (self.spec.as_str(), self.spec.as_str(), false),
+        };
+
+        // Expand host path (~ -> host home)
+        let host_expanded = Self::expand_path(host_spec, host_home)
+            .wrap_err_with(|| format!("Invalid host path in mount: {}", self.spec))?;
+
+        // Determine container path
+        let container_path = if has_explicit_dest {
+            // Explicit dest: expand ~ to container home
+            Self::expand_path(container_spec, container_home)
+                .wrap_err_with(|| format!("Invalid container path in mount: {}", self.spec))?
+        } else if self.home_relative {
+            // No explicit dest + home_relative: replace host home prefix with container home
+            if let Some(suffix) = host_expanded.strip_prefix(host_home) {
+                format!("{}{}", container_home, suffix)
+            } else {
+                // Path not under host home, use as-is
+                host_expanded.clone()
+            }
+        } else {
+            // No explicit dest + absolute: same path on both sides
+            host_expanded.clone()
+        };
+
+        Ok((host_expanded, container_path))
+    }
+
+    /// Expand a path. Paths must be absolute (`/...`) or home-relative (`~/...`).
+    fn expand_path(path: &str, home: &str) -> Result<String> {
+        if path.starts_with('~') {
+            Ok(path.replacen('~', home, 1))
+        } else if path.starts_with('/') {
+            Ok(path.to_string())
+        } else {
+            Err(eyre::eyre!(
+                "Path must be absolute (/...) or home-relative (~/...): {}",
+                path
+            ))
+        }
+    }
+
+    /// Resolve this mount to all necessary resolved mounts, including symlink chain.
+    ///
+    /// If the path contains symlinks, returns resolved mounts for:
+    /// 1. Each symlink in the chain (so the symlink exists in the container)
+    /// 2. The final canonical target (so the symlink resolves)
+    ///
+    /// All intermediate symlinks and the final target are mounted so that
+    /// path resolution works identically in the container.
+    pub fn to_resolved_mounts(&self) -> Result<Vec<ResolvedMount>> {
+        let host_home =
+            std::env::var("HOME").wrap_err("Failed to get HOME environment variable")?;
+        let container_user = std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .unwrap_or_else(|_| "user".to_string());
+        let container_home = format!("/home/{}", container_user);
+
+        self.to_resolved_mounts_with_homes(&host_home, &container_home)
+    }
+
+    /// Resolve with explicit home directories, returning all resolved mounts including symlink chain.
+    pub fn to_resolved_mounts_with_homes(
+        &self,
+        host_home: &str,
+        container_home: &str,
+    ) -> Result<Vec<ResolvedMount>> {
+        let (host_expanded, _) = self.resolve_paths(host_home, container_home)?;
+
+        let host_path = PathBuf::from(&host_expanded);
+        if !host_path.exists() {
+            return Err(eyre::eyre!("Mount path does not exist: {}", host_expanded));
+        }
+
+        let mut resolved_mounts = Vec::new();
+        let mut seen_paths = std::collections::HashSet::new();
+
+        // Walk the symlink chain
+        self.collect_symlink_chain(
+            &host_path,
+            host_home,
+            container_home,
+            &mut resolved_mounts,
+            &mut seen_paths,
+        )?;
+
+        Ok(resolved_mounts)
+    }
+
+    /// Recursively collect all paths in a symlink chain.
+    fn collect_symlink_chain(
+        &self,
+        path: &PathBuf,
+        host_home: &str,
+        container_home: &str,
+        resolved_mounts: &mut Vec<ResolvedMount>,
+        seen: &mut std::collections::HashSet<PathBuf>,
+    ) -> Result<()> {
+        // Canonicalize to get the absolute path (resolves . and ..)
+        let canonical = path
+            .canonicalize()
+            .wrap_err(format!("Failed to canonicalize path: {}", path.display()))?;
+
+        // If we've already seen this canonical path, skip
+        if seen.contains(&canonical) {
+            return Ok(());
+        }
+
+        // Check if the path itself is a symlink
+        let metadata = std::fs::symlink_metadata(path)
+            .wrap_err(format!("Failed to get metadata for: {}", path.display()))?;
+
+        if metadata.is_symlink() {
+            // Mount the symlink itself (not following it)
+            let path_str = path.to_string_lossy().to_string();
+            let container_path = self.derive_container_path(&path_str, host_home, container_home);
+            resolved_mounts.push(ResolvedMount {
+                host: path.clone(),
+                container: container_path,
+                mode: self.mode,
+            });
+
+            // Read the symlink target
+            let target = std::fs::read_link(path)
+                .wrap_err(format!("Failed to read symlink: {}", path.display()))?;
+
+            // Resolve relative symlinks
+            let target_path = if target.is_absolute() {
+                target
+            } else {
+                path.parent().map(|p| p.join(&target)).unwrap_or(target)
+            };
+
+            // Recursively process the target
+            self.collect_symlink_chain(
+                &target_path,
+                host_home,
+                container_home,
+                resolved_mounts,
+                seen,
+            )?;
+        } else {
+            // Not a symlink - mount the final target
+            seen.insert(canonical.clone());
+            let canonical_str = canonical.to_string_lossy().to_string();
+            let container_path =
+                self.derive_container_path(&canonical_str, host_home, container_home);
+            resolved_mounts.push(ResolvedMount {
+                host: canonical,
+                container: container_path,
+                mode: self.mode,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Derive container path from host path based on home_relative setting.
+    fn derive_container_path(
+        &self,
+        host_path: &str,
+        host_home: &str,
+        container_home: &str,
+    ) -> PathBuf {
+        if self.home_relative
+            && let Some(suffix) = host_path.strip_prefix(host_home)
+        {
+            return PathBuf::from(format!("{}{}", container_home, suffix));
+        }
+        PathBuf::from(host_path)
+    }
+}
+
+impl PartialEq for Mount {
+    fn eq(&self, other: &Self) -> bool {
+        // Two mounts are equal if they have the same mode and resolve to the same paths
+        if self.mode != other.mode {
+            return false;
+        }
+
+        // Use resolve_paths with dummy homes for comparison (without canonicalization)
+        // This allows comparing mounts without requiring the paths to exist
+        let dummy_home = "/home/user";
+        let self_resolved = self.resolve_paths(dummy_home, dummy_home);
+        let other_resolved = other.resolve_paths(dummy_home, dummy_home);
+
+        match (self_resolved, other_resolved) {
+            (Ok((h1, c1)), Ok((h2, c2))) => h1 == h2 && c1 == c2,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Mount {}
+
+impl std::hash::Hash for Mount {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.mode.hash(state);
+        // Hash the resolved paths for consistency with PartialEq
+        let dummy_home = "/home/user";
+        if let Ok((host, container)) = self.resolve_paths(dummy_home, dummy_home) {
+            host.hash(state);
+            container.hash(state);
+        } else {
+            // Fallback to spec if resolution fails
+            self.spec.hash(state);
+            self.home_relative.hash(state);
+        }
+    }
+}
+
+impl fmt::Display for Mount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.mode, self.spec)?;
+        if self.home_relative {
+            write!(f, " (home-relative)")?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Deserialize, Default, Clone, PartialEq)]
 pub struct MountPaths {
@@ -16,23 +396,6 @@ pub struct MountPaths {
     pub absolute: Vec<String>,
     #[serde(default)]
     pub home_relative: Vec<String>,
-}
-
-impl MountPaths {
-    /// Merge another MountPaths into this one (concatenate arrays)
-    pub fn merge(&mut self, other: &MountPaths) {
-        self.absolute.extend(other.absolute.iter().cloned());
-        self.home_relative
-            .extend(other.home_relative.iter().cloned());
-    }
-
-    /// Deduplicate mount paths, preserving order (first occurrence wins)
-    pub fn dedup(&mut self) {
-        let mut seen = HashSet::new();
-        self.absolute.retain(|p| seen.insert(p.clone()));
-        seen.clear();
-        self.home_relative.retain(|p| seen.insert(p.clone()));
-    }
 }
 
 #[derive(Debug, Deserialize, Default, Clone, PartialEq)]
@@ -46,18 +409,54 @@ pub struct MountsConfig {
 }
 
 impl MountsConfig {
-    /// Merge another MountsConfig into this one (concatenate arrays)
-    pub fn merge(&mut self, other: &MountsConfig) {
-        self.ro.merge(&other.ro);
-        self.rw.merge(&other.rw);
-        self.o.merge(&other.o);
-    }
+    /// Convert to a flat list of Mount structs
+    pub fn to_mounts(&self) -> Vec<Mount> {
+        let mut mounts = Vec::new();
 
-    /// Deduplicate all mount paths
-    pub fn dedup(&mut self) {
-        self.ro.dedup();
-        self.rw.dedup();
-        self.o.dedup();
+        for spec in &self.ro.absolute {
+            mounts.push(Mount {
+                spec: spec.clone(),
+                home_relative: false,
+                mode: MountMode::Ro,
+            });
+        }
+        for spec in &self.ro.home_relative {
+            mounts.push(Mount {
+                spec: spec.clone(),
+                home_relative: true,
+                mode: MountMode::Ro,
+            });
+        }
+        for spec in &self.rw.absolute {
+            mounts.push(Mount {
+                spec: spec.clone(),
+                home_relative: false,
+                mode: MountMode::Rw,
+            });
+        }
+        for spec in &self.rw.home_relative {
+            mounts.push(Mount {
+                spec: spec.clone(),
+                home_relative: true,
+                mode: MountMode::Rw,
+            });
+        }
+        for spec in &self.o.absolute {
+            mounts.push(Mount {
+                spec: spec.clone(),
+                home_relative: false,
+                mode: MountMode::Overlay,
+            });
+        }
+        for spec in &self.o.home_relative {
+            mounts.push(Mount {
+                spec: spec.clone(),
+                home_relative: true,
+                mode: MountMode::Overlay,
+            });
+        }
+
+        mounts
     }
 }
 
@@ -121,15 +520,54 @@ pub struct Config {
 /// Resolved mounts and env from profile resolution
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ResolvedProfile {
-    pub mounts: MountsConfig,
+    pub mounts: Vec<Mount>,
     pub env: Vec<String>,
 }
 
 impl ResolvedProfile {
     /// Merge another resolved profile into this one
     pub fn merge(&mut self, other: &ResolvedProfile) {
-        self.mounts.merge(&other.mounts);
+        self.mounts.extend(other.mounts.iter().cloned());
         self.env.extend(other.env.iter().cloned());
+    }
+
+    /// Deduplicate mounts by resolved path (first occurrence wins).
+    /// Uses canonicalized paths when possible to handle symlinks.
+    pub fn dedup_mounts(&mut self) {
+        let mut seen = HashSet::new();
+
+        // Get home dir for resolution
+        let host_home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
+        let container_user = std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .unwrap_or_else(|_| "user".to_string());
+        let container_home = format!("/home/{}", container_user);
+
+        self.mounts.retain(|m| {
+            // Try to resolve to canonical bind string
+            // Fall back to non-canonical comparison if path doesn't exist
+            let key = match m.resolve() {
+                Ok((host, container)) => format!("{}:{}:{}", host, container, m.mode),
+                Err(_) => {
+                    // Path doesn't exist, use non-canonical resolution with actual home dirs
+                    match m.resolve_paths(&host_home, &container_home) {
+                        Ok((host, container)) => format!("{}:{}:{}", host, container, m.mode),
+                        Err(_) => format!("{}:{}:{}", m.spec, m.home_relative, m.mode),
+                    }
+                }
+            };
+            seen.insert(key)
+        });
+    }
+
+    /// Get mount specs filtered by mode and home_relative flag (for testing)
+    #[cfg(test)]
+    fn get_mount_specs(&self, mode: MountMode, home_relative: bool) -> Vec<&str> {
+        self.mounts
+            .iter()
+            .filter(|m| m.mode == mode && m.home_relative == home_relative)
+            .map(|m| m.spec.as_str())
+            .collect()
     }
 }
 
@@ -141,13 +579,12 @@ impl ResolvedProfile {
 /// 3. Apply each profile from `profile_names` in order
 ///
 /// Each profile's `extends` chain is resolved depth-first before the profile itself.
-pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<ResolvedProfile> {
-    let mut resolved = ResolvedProfile {
-        mounts: config.runtime.mounts.clone(),
-        env: config.runtime.env.clone(),
-    };
-
-    // Collect all profiles to apply: default + CLI-specified
+/// Returns the list of profile names that will be applied, in order.
+/// This includes the default_profile (if set) followed by CLI-specified profiles.
+pub fn collect_profiles_to_apply<'a>(
+    config: &'a Config,
+    profile_names: &'a [String],
+) -> Vec<&'a str> {
     let mut profiles_to_apply: Vec<&str> = Vec::new();
 
     if let Some(ref default) = config.default_profile {
@@ -158,14 +595,25 @@ pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<Res
         profiles_to_apply.push(name);
     }
 
+    profiles_to_apply
+}
+
+pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<ResolvedProfile> {
+    let mut resolved = ResolvedProfile {
+        mounts: config.runtime.mounts.to_mounts(),
+        env: config.runtime.env.clone(),
+    };
+
+    let profiles_to_apply = collect_profiles_to_apply(config, profile_names);
+
     // Resolve each profile
     for profile_name in profiles_to_apply {
         let profile_resolved = resolve_single_profile(config, profile_name, &mut HashSet::new())?;
         resolved.merge(&profile_resolved);
     }
 
-    // Deduplicate mounts (exact string match)
-    resolved.mounts.dedup();
+    // Deduplicate mounts (exact spec match)
+    resolved.dedup_mounts();
 
     Ok(resolved)
 }
@@ -207,7 +655,7 @@ fn resolve_single_profile(
     }
 
     // Then apply this profile's own mounts and env
-    resolved.mounts.merge(&profile.mounts);
+    resolved.mounts.extend(profile.mounts.to_mounts());
     resolved.env.extend(profile.env.iter().cloned());
 
     // Remove from visited after processing (allow same profile in different branches)
@@ -960,7 +1408,7 @@ mod tests {
 
         // Should just have runtime.env
         assert_eq!(resolved.env, vec!["BASE=1"]);
-        assert!(resolved.mounts.ro.absolute.is_empty());
+        assert!(resolved.mounts.is_empty());
     }
 
     #[test]
@@ -985,8 +1433,8 @@ mod tests {
 
         assert_eq!(resolved.env, vec!["BASE=1", "GIT=1"]);
         assert_eq!(
-            resolved.mounts.ro.home_relative,
-            vec!["~/.gitconfig".to_string()]
+            resolved.get_mount_specs(MountMode::Ro, true),
+            vec!["~/.gitconfig"]
         );
     }
 
@@ -1031,8 +1479,14 @@ mod tests {
         // Should have: runtime.env + base env + git env
         assert_eq!(resolved.env, vec!["BASE=1", "PROFILE_BASE=1", "GIT=1"]);
         // Mounts from base and git
-        assert_eq!(resolved.mounts.ro.absolute, vec!["/nix/store"]);
-        assert_eq!(resolved.mounts.ro.home_relative, vec!["~/.gitconfig"]);
+        assert_eq!(
+            resolved.get_mount_specs(MountMode::Ro, false),
+            vec!["/nix/store"]
+        );
+        assert_eq!(
+            resolved.get_mount_specs(MountMode::Ro, true),
+            vec!["~/.gitconfig"]
+        );
     }
 
     #[test]
@@ -1272,16 +1726,25 @@ mod tests {
 
         // ro: runtime + base + extra
         assert_eq!(
-            resolved.mounts.ro.absolute,
+            resolved.get_mount_specs(MountMode::Ro, false),
             vec!["/runtime", "/base", "/extra"]
         );
-        assert_eq!(resolved.mounts.ro.home_relative, vec!["~/.base"]);
+        assert_eq!(
+            resolved.get_mount_specs(MountMode::Ro, true),
+            vec!["~/.base"]
+        );
 
         // rw: base only
-        assert_eq!(resolved.mounts.rw.home_relative, vec!["~/.base-rw"]);
+        assert_eq!(
+            resolved.get_mount_specs(MountMode::Rw, true),
+            vec!["~/.base-rw"]
+        );
 
         // o: extra only
-        assert_eq!(resolved.mounts.o.home_relative, vec!["~/.extra-o"]);
+        assert_eq!(
+            resolved.get_mount_specs(MountMode::Overlay, true),
+            vec!["~/.extra-o"]
+        );
     }
 
     #[test]
@@ -1327,10 +1790,13 @@ mod tests {
 
         // /nix/store and ~/.config should NOT be duplicated
         assert_eq!(
-            resolved.mounts.ro.absolute,
+            resolved.get_mount_specs(MountMode::Ro, false),
             vec!["/nix/store", "/base-only", "/extra-only"]
         );
-        assert_eq!(resolved.mounts.ro.home_relative, vec!["~/.config"]);
+        assert_eq!(
+            resolved.get_mount_specs(MountMode::Ro, true),
+            vec!["~/.config"]
+        );
     }
 
     #[test]
@@ -1396,12 +1862,188 @@ mod tests {
         let resolved = resolve_profiles(&config, &["dev".to_string()]).unwrap();
 
         // base's mounts should only appear once despite diamond inheritance
-        assert_eq!(resolved.mounts.ro.absolute, vec!["/nix/store"]);
+        assert_eq!(
+            resolved.get_mount_specs(MountMode::Ro, false),
+            vec!["/nix/store"]
+        );
         // Order: base (via git), git, base (skipped - already present), jj
         assert_eq!(
-            resolved.mounts.ro.home_relative,
+            resolved.get_mount_specs(MountMode::Ro, true),
             vec!["~/.config", "~/.gitconfig", "~/.jjconfig.toml"]
         );
+    }
+
+    #[test]
+    fn test_resolve_profiles_dedup_by_resolved_path() {
+        // Test that mounts are deduplicated by resolved path, not just spec string
+        // ~/dev and $HOME/dev should resolve to the same path and be deduplicated
+        let home = std::env::var("HOME").unwrap();
+        let absolute_path = format!("{}/dev", home);
+
+        let mut config = make_test_config();
+
+        config.profiles.insert(
+            "a".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        // Uses ~ which expands to $HOME
+                        absolute: vec![],
+                        home_relative: vec!["~/dev".to_string()],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        config.profiles.insert(
+            "b".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        // Uses absolute path $HOME/dev - same as ~/dev expanded
+                        absolute: vec![absolute_path],
+                        home_relative: vec![],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        let resolved = resolve_profiles(&config, &["a".to_string(), "b".to_string()]).unwrap();
+
+        // ~/dev and $HOME/dev should deduplicate to 1 mount
+        assert_eq!(resolved.mounts.len(), 1);
+    }
+
+    #[test]
+    fn test_resolve_profiles_dedup_symlinks() {
+        // Test that symlinked paths get deduplicated after canonicalization
+        // Create a temp dir with a symlink
+        let temp_dir = std::env::temp_dir().join(format!("ab_test_{}", std::process::id()));
+        let real_path = temp_dir.join("real");
+        let symlink_path = temp_dir.join("symlink");
+
+        // Clean up from any previous failed runs
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        std::fs::create_dir_all(&real_path).unwrap();
+        std::os::unix::fs::symlink(&real_path, &symlink_path).unwrap();
+
+        let mut config = make_test_config();
+
+        config.profiles.insert(
+            "a".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        absolute: vec![real_path.to_string_lossy().to_string()],
+                        home_relative: vec![],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        config.profiles.insert(
+            "b".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig {
+                    ro: MountPaths {
+                        absolute: vec![symlink_path.to_string_lossy().to_string()],
+                        home_relative: vec![],
+                    },
+                    ..Default::default()
+                },
+                env: vec![],
+            },
+        );
+
+        let resolved = resolve_profiles(&config, &["a".to_string(), "b".to_string()]).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Both paths should resolve to the same canonical path and be deduplicated
+        assert_eq!(resolved.mounts.len(), 1);
+    }
+
+    #[test]
+    fn test_mount_to_bind_strings_follows_symlink_chain() {
+        // Test that to_bind_strings returns mounts for entire symlink chain
+        // Create: symlink_a -> symlink_b -> real_dir
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab_symlink_chain_{}", std::process::id()));
+        let real_dir = temp_dir.join("real");
+        let symlink_b = temp_dir.join("symlink_b");
+        let symlink_a = temp_dir.join("symlink_a");
+
+        // Clean up from any previous failed runs
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        std::fs::create_dir_all(&real_dir).unwrap();
+        std::os::unix::fs::symlink(&real_dir, &symlink_b).unwrap();
+        std::os::unix::fs::symlink(&symlink_b, &symlink_a).unwrap();
+
+        let mount = Mount {
+            spec: symlink_a.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        let resolved_mounts = mount.to_resolved_mounts().unwrap();
+        let bind_strings: Vec<String> = resolved_mounts
+            .iter()
+            .map(|rm| rm.to_bind_string())
+            .collect();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have 3 mounts: symlink_a, symlink_b, and real_dir
+        assert_eq!(resolved_mounts.len(), 3);
+
+        // Verify all paths are present (order may vary due to recursion)
+        let all_binds = bind_strings.join(" ");
+        assert!(all_binds.contains("symlink_a"), "should contain symlink_a");
+        assert!(all_binds.contains("symlink_b"), "should contain symlink_b");
+        assert!(all_binds.contains("real"), "should contain real");
+    }
+
+    #[test]
+    fn test_mount_to_bind_strings_no_symlink() {
+        // Test that regular paths just return one bind string
+        let temp_dir = std::env::temp_dir().join(format!("ab_no_symlink_{}", std::process::id()));
+
+        // Clean up from any previous failed runs
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let mount = Mount {
+            spec: temp_dir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        let resolved_mounts = mount.to_resolved_mounts().unwrap();
+        let bind_strings: Vec<String> = resolved_mounts
+            .iter()
+            .map(|rm| rm.to_bind_string())
+            .collect();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have just 1 mount
+        assert_eq!(resolved_mounts.len(), 1);
     }
 
     #[test]
@@ -1513,10 +2155,13 @@ mod tests {
             // Should have: runtime.env (empty) + base + git + repo-dev
             assert_eq!(resolved.env, vec!["BASE=1", "GIT=1", "REPO_DEV=1"]);
             // Mounts from base
-            assert_eq!(resolved.mounts.ro.absolute, vec!["/nix/store"]);
+            assert_eq!(
+                resolved.get_mount_specs(MountMode::Ro, false),
+                vec!["/nix/store"]
+            );
             // Mounts from repo-dev
             assert_eq!(
-                resolved.mounts.rw.home_relative,
+                resolved.get_mount_specs(MountMode::Rw, true),
                 vec!["~/.local/share/myproject"]
             );
 
