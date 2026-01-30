@@ -546,16 +546,14 @@ impl ResolvedProfile {
         self.mounts.retain(|m| {
             // Try to resolve to canonical bind string
             // Fall back to non-canonical comparison if path doesn't exist
-            let key = match m.resolve() {
-                Ok((host, container)) => format!("{}:{}:{}", host, container, m.mode),
-                Err(_) => {
-                    // Path doesn't exist, use non-canonical resolution with actual home dirs
-                    match m.resolve_paths(&host_home, &container_home) {
-                        Ok((host, container)) => format!("{}:{}:{}", host, container, m.mode),
-                        Err(_) => format!("{}:{}:{}", m.spec, m.home_relative, m.mode),
-                    }
-                }
-            };
+            let key = m
+                .resolve()
+                .map(|(h, c)| format!("{}:{}:{}", h, c, m.mode))
+                .or_else(|_| {
+                    m.resolve_paths(&host_home, &container_home)
+                        .map(|(h, c)| format!("{}:{}:{}", h, c, m.mode))
+                })
+                .unwrap_or_else(|_| format!("{}:{}:{}", m.spec, m.home_relative, m.mode));
             seen.insert(key)
         });
     }

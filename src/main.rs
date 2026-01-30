@@ -125,6 +125,17 @@ enum DbgCommands {
     },
 }
 
+/// Helper to unwrap Result or exit with error message
+fn unwrap_or_exit<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("{}: {}", context, e);
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let config = load_config_or_exit();
@@ -192,13 +203,10 @@ fn main() {
             }
 
             // Resolve repo_id from repo argument
-            let repo_id = match resolve_repo_id(&config, repo.as_deref()) {
-                Ok(id) => id,
-                Err(e) => {
-                    eprintln!("Error resolving repository: {}", e);
-                    std::process::exit(1);
-                }
-            };
+            let repo_id = unwrap_or_exit(
+                resolve_repo_id(&config, repo.as_deref()),
+                "Error resolving repository",
+            );
 
             // Build container configuration
             let (workspace_path, source_path) = if local {
@@ -218,22 +226,16 @@ fn main() {
             }
 
             // Resolve profiles (default + CLI-specified)
-            let resolved_profile = match resolve_profiles(&config, &profile) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("Error resolving profiles: {}", e);
-                    std::process::exit(1);
-                }
-            };
+            let resolved_profile = unwrap_or_exit(
+                resolve_profiles(&config, &profile),
+                "Error resolving profiles",
+            );
 
             // Parse CLI mount arguments
-            let cli_mounts = match runtime::parse_cli_mounts(&mount, &mount_abs) {
-                Ok(m) => m,
-                Err(e) => {
-                    eprintln!("Error parsing mount arguments: {}", e);
-                    std::process::exit(1);
-                }
-            };
+            let cli_mounts = unwrap_or_exit(
+                runtime::parse_cli_mounts(&mount, &mount_abs),
+                "Error parsing mount arguments",
+            );
 
             let container_config = match build_container_config(
                 &config,
@@ -262,28 +264,20 @@ fn main() {
             }
         }
         Commands::Dbg { command } => match command {
-            DbgCommands::Locate { repo } => match locate_repo(&config, repo.as_deref()) {
-                Ok(repo_id) => {
-                    println!("{}", repo_id.relative_path().display());
-                }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    std::process::exit(1);
-                }
-            },
+            DbgCommands::Locate { repo } => {
+                let repo_id = unwrap_or_exit(locate_repo(&config, repo.as_deref()), "Error");
+                println!("{}", repo_id.relative_path().display());
+            }
             DbgCommands::Remove {
                 repo,
                 dry_run,
                 force,
             } => {
                 // Locate the repository identifier
-                let repo_id = match locate_repo(&config, Some(&repo)) {
-                    Ok(id) => id,
-                    Err(e) => {
-                        eprintln!("Error locating repository: {}", e);
-                        std::process::exit(1);
-                    }
-                };
+                let repo_id = unwrap_or_exit(
+                    locate_repo(&config, Some(&repo)),
+                    "Error locating repository",
+                );
 
                 // Show what will be removed (always, even if --force is used)
                 if let Err(e) = remove_repo(&config, &repo_id, true) {
@@ -396,48 +390,40 @@ fn main() {
                 }
 
                 // Resolve profiles
-                match resolve_profiles(&config, &profile) {
-                    Ok(resolved) => {
-                        // Show mounts
-                        println!("\n  Mounts:");
-                        if resolved.mounts.is_empty() {
-                            println!("    (none)");
-                        } else {
-                            for m in &resolved.mounts {
-                                match m.to_resolved_mounts() {
-                                    Ok(resolved_mounts) => {
-                                        if resolved_mounts.len() == 1 {
-                                            println!(
-                                                "    {} -> {}",
-                                                m,
-                                                resolved_mounts[0].to_bind_string()
-                                            );
-                                        } else {
-                                            // Multiple resolved_mounts (symlink chain)
-                                            println!("    {} ->", m);
-                                            for rm in resolved_mounts {
-                                                println!("      {}", rm.to_bind_string());
-                                            }
-                                        }
-                                    }
-                                    Err(e) => println!("    {} -> ERROR: {}", m, e),
+                let resolved = unwrap_or_exit(
+                    resolve_profiles(&config, &profile),
+                    "Error resolving profiles",
+                );
+
+                // Show mounts
+                println!("\n  Mounts:");
+                if resolved.mounts.is_empty() {
+                    println!("    (none)");
+                } else {
+                    for m in &resolved.mounts {
+                        match m.to_resolved_mounts() {
+                            Ok(resolved_mounts) if resolved_mounts.len() == 1 => {
+                                println!("    {} -> {}", m, resolved_mounts[0].to_bind_string());
+                            }
+                            Ok(resolved_mounts) => {
+                                // Multiple resolved_mounts (symlink chain)
+                                println!("    {} ->", m);
+                                for rm in resolved_mounts {
+                                    println!("      {}", rm.to_bind_string());
                                 }
                             }
-                        }
-
-                        // Show env
-                        println!("\n  Environment:");
-                        if resolved.env.is_empty() {
-                            println!("    (none)");
-                        } else {
-                            for e in &resolved.env {
-                                println!("    {}", e);
-                            }
+                            Err(e) => println!("    {} -> ERROR: {}", m, e),
                         }
                     }
-                    Err(e) => {
-                        eprintln!("Error resolving profiles: {}", e);
-                        std::process::exit(1);
+                }
+
+                // Show env
+                println!("\n  Environment:");
+                if resolved.env.is_empty() {
+                    println!("    (none)");
+                } else {
+                    for e in &resolved.env {
+                        println!("    {}", e);
                     }
                 }
             }
