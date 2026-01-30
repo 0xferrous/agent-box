@@ -7,7 +7,7 @@ mod repo;
 mod runtime;
 
 use config::{
-    collect_profiles_to_apply, load_config_or_exit, resolve_profiles, validate_config,
+    collect_profiles_to_apply, load_config, resolve_profiles, validate_config,
     validate_config_or_err,
 };
 use display::info;
@@ -125,27 +125,20 @@ enum DbgCommands {
     },
 }
 
-/// Helper to unwrap Result or exit with error message
-fn unwrap_or_exit<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
-    match result {
-        Ok(value) => value,
-        Err(e) => {
-            eprintln!("{}: {}", context, e);
-            std::process::exit(1);
-        }
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
     }
 }
 
-fn main() {
+fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
-    let config = load_config_or_exit();
+    let config = load_config()?;
 
     match cli.command {
         Commands::Info => {
-            if let Err(e) = info(&config) {
-                eprintln!("Error getting repository info: {}", e);
-                std::process::exit(1);
-            }
+            info(&config)?;
         }
         Commands::New {
             repo_name,
@@ -162,15 +155,12 @@ fn main() {
                 WorkspaceType::Jj
             };
 
-            if let Err(e) = new_workspace(
+            new_workspace(
                 &config,
                 repo_name.as_deref(),
                 session.as_deref(),
                 workspace_type,
-            ) {
-                eprintln!("Error creating new workspace: {}", e);
-                std::process::exit(1);
-            }
+            )?;
         }
         Commands::Spawn {
             repo,
@@ -196,17 +186,11 @@ fn main() {
                 let session_name = session
                     .as_ref()
                     .expect("session required when --new is set");
-                if let Err(e) = new_workspace(&config, repo.as_deref(), Some(session_name), wtype) {
-                    eprintln!("Error creating new workspace: {}", e);
-                    std::process::exit(1);
-                }
+                new_workspace(&config, repo.as_deref(), Some(session_name), wtype)?;
             }
 
             // Resolve repo_id from repo argument
-            let repo_id = unwrap_or_exit(
-                resolve_repo_id(&config, repo.as_deref()),
-                "Error resolving repository",
-            );
+            let repo_id = resolve_repo_id(&config, repo.as_deref())?;
 
             // Build container configuration
             let (workspace_path, source_path) = if local {
@@ -220,22 +204,13 @@ fn main() {
             };
 
             // Validate config before resolving profiles
-            if let Err(e) = validate_config_or_err(&config) {
-                eprintln!("{}", e);
-                std::process::exit(1);
-            }
+            validate_config_or_err(&config)?;
 
             // Resolve profiles (default + CLI-specified)
-            let resolved_profile = unwrap_or_exit(
-                resolve_profiles(&config, &profile),
-                "Error resolving profiles",
-            );
+            let resolved_profile = resolve_profiles(&config, &profile)?;
 
             // Parse CLI mount arguments
-            let cli_mounts = unwrap_or_exit(
-                runtime::parse_cli_mounts(&mount, &mount_abs),
-                "Error parsing mount arguments",
-            );
+            let cli_mounts = runtime::parse_cli_mounts(&mount, &mount_abs)?;
 
             let container_config = match build_container_config(
                 &config,
@@ -258,14 +233,11 @@ fn main() {
             let container_runtime = create_runtime(&config);
 
             // Spawn the container
-            if let Err(e) = container_runtime.spawn_container(&container_config) {
-                eprintln!("Error spawning container: {}", e);
-                std::process::exit(1);
-            }
+            container_runtime.spawn_container(&container_config)?;
         }
         Commands::Dbg { command } => match command {
             DbgCommands::Locate { repo } => {
-                let repo_id = unwrap_or_exit(locate_repo(&config, repo.as_deref()), "Error");
+                let repo_id = locate_repo(&config, repo.as_deref())?;
                 println!("{}", repo_id.relative_path().display());
             }
             DbgCommands::Remove {
@@ -274,20 +246,14 @@ fn main() {
                 force,
             } => {
                 // Locate the repository identifier
-                let repo_id = unwrap_or_exit(
-                    locate_repo(&config, Some(&repo)),
-                    "Error locating repository",
-                );
+                let repo_id = locate_repo(&config, Some(&repo))?;
 
                 // Show what will be removed (always, even if --force is used)
-                if let Err(e) = remove_repo(&config, &repo_id, true) {
-                    eprintln!("Error listing files to remove: {}", e);
-                    std::process::exit(1);
-                }
+                remove_repo(&config, &repo_id, true)?;
 
                 // If dry-run, we're done
                 if dry_run {
-                    return;
+                    return Ok(());
                 }
 
                 // Prompt for confirmation unless --force is used
@@ -300,15 +266,12 @@ fn main() {
 
                     if !confirmed {
                         println!("Cancelled.");
-                        return;
+                        return Ok(());
                     }
                 }
 
                 // Actually remove
-                if let Err(e) = remove_repo(&config, &repo_id, false) {
-                    eprintln!("Error removing repository: {}", e);
-                    std::process::exit(1);
-                }
+                remove_repo(&config, &repo_id, false)?;
             }
             DbgCommands::Validate => {
                 let result = validate_config(&config);
@@ -370,10 +333,7 @@ fn main() {
             }
             DbgCommands::Resolve { profile } => {
                 // Validate config first
-                if let Err(e) = validate_config_or_err(&config) {
-                    eprintln!("Configuration error: {}", e);
-                    std::process::exit(1);
-                }
+                validate_config_or_err(&config)?;
 
                 // Show which profiles will be applied
                 let profiles_applied = collect_profiles_to_apply(&config, &profile);
@@ -390,10 +350,7 @@ fn main() {
                 }
 
                 // Resolve profiles
-                let resolved = unwrap_or_exit(
-                    resolve_profiles(&config, &profile),
-                    "Error resolving profiles",
-                );
+                let resolved = resolve_profiles(&config, &profile)?;
 
                 // Show mounts
                 println!("\n  Mounts:");
@@ -429,4 +386,6 @@ fn main() {
             }
         },
     }
+
+    Ok(())
 }

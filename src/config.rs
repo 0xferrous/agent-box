@@ -866,17 +866,6 @@ pub fn validate_config_or_err(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Load configuration or exit on error
-pub fn load_config_or_exit() -> Config {
-    match load_config() {
-        Ok(config) => config,
-        Err(e) => {
-            eprintln!("Error loading config: {}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
