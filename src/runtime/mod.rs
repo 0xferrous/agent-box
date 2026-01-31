@@ -53,6 +53,22 @@ impl Runtime {
             Runtime::Podman(rt) => rt.spawn_container(config),
         }
     }
+
+    /// Check if a path exists in the container image
+    pub fn path_exists_in_image(&self, image: &str, path: &str) -> Result<bool> {
+        match self {
+            Runtime::Docker(rt) => rt.path_exists_in_image(image, path),
+            Runtime::Podman(rt) => rt.path_exists_in_image(image, path),
+        }
+    }
+
+    /// List all paths in the container image
+    pub fn list_paths_in_image(&self, image: &str, root_path: Option<&str>) -> Result<Vec<String>> {
+        match self {
+            Runtime::Docker(rt) => rt.list_paths_in_image(image, root_path),
+            Runtime::Podman(rt) => rt.list_paths_in_image(image, root_path),
+        }
+    }
 }
 
 /// Factory to create the appropriate container runtime

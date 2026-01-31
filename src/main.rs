@@ -126,6 +126,24 @@ enum DbgCommands {
         #[arg(long, short = 'p', value_name = "PROFILE")]
         profile: Vec<String>,
     },
+    /// Check if a path exists in a container image
+    CheckPath {
+        /// Container image to check (e.g., "nixos/nix:latest")
+        image: String,
+        /// Path to check in the image (e.g., "/nix/store")
+        path: String,
+    },
+    /// List all paths (directories) in a container image
+    ListPaths {
+        /// Container image to inspect (e.g., "nixos/nix:latest")
+        image: String,
+        /// Root path to start listing from (defaults to "/")
+        #[arg(long, short = 'p')]
+        root_path: Option<String>,
+        /// Filter paths containing this string
+        #[arg(long, short = 'f')]
+        filter: Option<String>,
+    },
 }
 
 fn main() {
@@ -390,6 +408,73 @@ fn run() -> eyre::Result<()> {
                 } else {
                     for e in &resolved.env {
                         println!("    {}", e);
+                    }
+                }
+            }
+            DbgCommands::CheckPath { image, path } => {
+                let runtime = create_runtime(&config);
+
+                println!("Checking if path exists in image...");
+                println!("  Image: {}", image);
+                println!("  Path: {}", path);
+                println!();
+
+                match runtime.path_exists_in_image(&image, &path) {
+                    Ok(true) => {
+                        println!("✓ Path exists in image");
+                        std::process::exit(0);
+                    }
+                    Ok(false) => {
+                        println!("✗ Path does not exist in image");
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("Error checking path: {}", e);
+                        std::process::exit(2);
+                    }
+                }
+            }
+            DbgCommands::ListPaths {
+                image,
+                root_path,
+                filter,
+            } => {
+                let runtime = create_runtime(&config);
+
+                let root = root_path.as_deref();
+                let root_display = root.unwrap_or("/");
+
+                println!("Listing paths in image...");
+                println!("  Image: {}", image);
+                println!("  Root: {}", root_display);
+                if let Some(f) = &filter {
+                    println!("  Filter: {}", f);
+                }
+                println!();
+
+                match runtime.list_paths_in_image(&image, root) {
+                    Ok(paths) => {
+                        let filtered_paths: Vec<_> = if let Some(f) = &filter {
+                            paths
+                                .into_iter()
+                                .filter(|p| p.contains(f.as_str()))
+                                .collect()
+                        } else {
+                            paths
+                        };
+
+                        if filtered_paths.is_empty() {
+                            println!("No directories found");
+                        } else {
+                            println!("Found {} directories:", filtered_paths.len());
+                            for path in filtered_paths {
+                                println!("  {}", path);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error listing paths: {}", e);
+                        std::process::exit(1);
                     }
                 }
             }

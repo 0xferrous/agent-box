@@ -173,25 +173,33 @@ Agent Box automatically deduplicates mounts and skips redundant paths:
 - Subpaths under already-mounted directories are skipped
 - Example: If `/nix/store` is mounted, `/nix/store/package` is redundant
 
-**Mode Compatibility:**
+**Non-Existent Path Filtering:**
 
-When mounting a path under an already-mounted parent, mode compatibility is enforced:
+Agent Box automatically filters out mount paths that don't exist on the host:
 
-| Parent Mode | Child Mode | Result |
-|-------------|------------|--------|
-| `ro` | `ro` | Allowed (skip, redundant) |
-| `ro` | `rw` | **Error** - can't write under read-only |
-| `ro` | `O` (overlay) | **Error** - can't overlay under read-only |
-| `rw` | any | Allowed (skip, redundant) |
-| `O` (overlay) | any | Allowed (skip, redundant) |
+- Paths are checked for existence before being added to the container command
+- Non-existent paths are silently filtered out with a debug message
+- This prevents container spawn failures due to missing host paths
+- Example: If `~/.config/nvim` is in your profile but doesn't exist, it's skipped
 
-Example error:
+To see filtered paths, look for `DEBUG: Filtering out non-existent mount:` messages when spawning containers.
+
+**Mount Coverage:**
+
+When a mount path is under an already-mounted parent directory, it is automatically skipped (unless `--no-skip` is used):
+
+- Mounts are checked against existing mounts to avoid redundancy
+- If a path is already covered by a parent mount, the child mount is skipped
+- This applies to all mode combinations (ro/rw/overlay)
+- Use `--no-skip` flag to disable this behavior and mount all paths explicitly
+
+Example:
 ```toml
 [runtime.mounts.ro]
 absolute = ["/nix/store"]
 
 [profiles.dev.mounts.rw]
-absolute = ["/nix/store/mydata"]  # ERROR: Cannot mount rw under ro parent
+absolute = ["/nix/store/mydata"]  # Skipped - already covered by parent /nix/store
 ```
 
 ### Runtime Backends
