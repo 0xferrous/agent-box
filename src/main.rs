@@ -86,9 +86,6 @@ enum Commands {
         /// Example: -p git -p rust
         #[arg(long, short = 'p', value_name = "PROFILE")]
         profile: Vec<String>,
-        /// Skip mount validity checks (e.g., rw under ro)
-        #[arg(long)]
-        no_check: bool,
         /// Don't skip mounts that are already covered by parent mounts
         #[arg(long)]
         no_skip: bool,
@@ -180,7 +177,6 @@ fn run() -> eyre::Result<()> {
             mount,
             mount_abs,
             profile,
-            no_check,
             no_skip,
         } => {
             let wtype = if git {
@@ -229,7 +225,6 @@ fn run() -> eyre::Result<()> {
                 &resolved_profile,
                 &cli_mounts,
                 command,
-                !no_check,
                 !no_skip,
             ) {
                 Ok(cfg) => cfg,

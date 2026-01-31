@@ -47,18 +47,6 @@ impl MountMode {
             MountMode::Overlay => "O",
         }
     }
-
-    pub fn is_ro(&self) -> bool {
-        matches!(self, MountMode::Ro)
-    }
-
-    pub fn is_rw(&self) -> bool {
-        matches!(self, MountMode::Rw)
-    }
-
-    pub fn is_overlay(&self) -> bool {
-        matches!(self, MountMode::Overlay)
-    }
 }
 
 impl fmt::Display for MountMode {
