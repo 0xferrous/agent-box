@@ -219,6 +219,7 @@ impl Mount {
     }
 
     /// Resolve with explicit home directories, returning all resolved mounts including symlink chain.
+    /// If the host path doesn't exist, returns an empty Vec and logs a debug message.
     pub fn to_resolved_mounts_with_homes(
         &self,
         host_home: &str,
@@ -228,7 +229,11 @@ impl Mount {
 
         let host_path = PathBuf::from(&host_expanded);
         if !host_path.exists() {
-            return Err(eyre::eyre!("Mount path does not exist: {}", host_expanded));
+            eprintln!(
+                "DEBUG: Filtering out non-existent mount: {} (mode: {})",
+                host_expanded, self.mode
+            );
+            return Ok(Vec::new());
         }
 
         let mut resolved_mounts = Vec::new();
@@ -2019,6 +2024,38 @@ mod tests {
 
         // Should have just 1 mount
         assert_eq!(resolved_mounts.len(), 1);
+    }
+
+    #[test]
+    fn test_mount_nonexistent_path_returns_empty_vec() {
+        // Test that non-existent paths return an empty vec instead of failing
+        let nonexistent_path = "/nonexistent/path/that/should/not/exist";
+
+        let mount = Mount {
+            spec: nonexistent_path.to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        let resolved_mounts = mount.to_resolved_mounts().unwrap();
+
+        // Should return empty vec for non-existent paths
+        assert_eq!(resolved_mounts.len(), 0);
+    }
+
+    #[test]
+    fn test_mount_nonexistent_home_relative_path_returns_empty_vec() {
+        // Test that non-existent home-relative paths return an empty vec
+        let mount = Mount {
+            spec: "~/nonexistent_directory_that_should_not_exist".to_string(),
+            home_relative: true,
+            mode: MountMode::Ro,
+        };
+
+        let resolved_mounts = mount.to_resolved_mounts().unwrap();
+
+        // Should return empty vec for non-existent paths
+        assert_eq!(resolved_mounts.len(), 0);
     }
 
     #[test]

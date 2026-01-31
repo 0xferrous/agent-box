@@ -364,6 +364,10 @@ fn run() -> eyre::Result<()> {
                 } else {
                     for m in &resolved.mounts {
                         match m.to_resolved_mounts() {
+                            Ok(resolved_mounts) if resolved_mounts.is_empty() => {
+                                // Path was filtered out (doesn't exist)
+                                println!("    {} -> FILTERED (path does not exist)", m);
+                            }
                             Ok(resolved_mounts) if resolved_mounts.len() == 1 => {
                                 println!("    {} -> {}", m, resolved_mounts[0].to_bind_string());
                             }
