@@ -56,7 +56,32 @@
           buildImage =
             {
               packages ? [ ],
+              directories ? [ ],
+              env ? { },
             }:
+            let
+              # Generate chown/mkdir commands for directories
+              # Each directory can be:
+              #   - a string (path): creates with default 755 permissions
+              #   - an attrset with path and mode: creates with specified permissions
+              dirCommands = pkgs.lib.concatMapStrings (
+                dir:
+                let
+                  path = if builtins.isString dir then dir else dir.path;
+                  mode = if builtins.isString dir then "755" else dir.mode or "755";
+                in
+                ''
+                  mkdir -p .${path}
+                  chmod ${mode} .${path}
+                  chown ${toString uid}:${toString gid} .${path}
+                ''
+              ) directories;
+
+              # Convert env attrset to list of "KEY=value" strings for Docker Env
+              envList = pkgs.lib.mapAttrsToList (name: value: "${name}=${value}") env;
+
+              finalPackages = packages ++ [ entrypoint ];
+            in
             pkgs.callPackage "${nix}/docker.nix" {
               name = "agent-box";
               tag = "latest";
@@ -75,22 +100,41 @@
                 ];
               };
 
-              extraPkgs = packages ++ [ entrypoint ];
+              extraPkgs = finalPackages;
 
               Entrypoint = [ "${entrypoint}/bin/entrypoint" ];
+              Env = envList;
 
-              # extraFakeRootCommands = ''
-              #   mkdir -p .${userHome}/.gnupg
-              #   chmod 700 .${userHome}/.gnupg
-              #   chown ${toString uid}:${toString gid} .${userHome}/.gnupg
-              # '';
+              extraFakeRootCommands = ''
+                # Create /is-container marker directory owned by root with read-only permissions
+                mkdir -p ./is-container
+                chmod 555 ./is-container
+                chown 0:0 ./is-container
+              ''
+              + dirCommands;
             };
 
           # Default package list
           defaultPackages = import ./packages.nix { inherit pkgs aiTools; };
         in
         {
-          default = buildImage { packages = defaultPackages; };
+          default = buildImage {
+            packages = defaultPackages;
+            directories = [ "${userHome}/.local" ];
+            env = {
+              EDITOR = "nvim";
+            };
+          };
+
+          # Example with custom environment variables
+          with-env = buildImage {
+            packages = defaultPackages;
+            directories = [ "${userHome}/.local" ];
+            env = {
+              AGENT_BOX_VERSION = "1.0";
+              CONTAINER_TYPE = "agent-box";
+            };
+          };
 
           # Expose the builder function for custom packages/user
           custom = buildImage;

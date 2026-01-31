@@ -90,6 +90,24 @@ defaultPackages = with pkgs; [
 ];
 ```
 
+## Setting Environment Variables
+
+You can persist environment variables directly in the Docker image by passing the `env` parameter to `buildImage`:
+
+```nix
+default = buildImage {
+  packages = defaultPackages;
+  directories = [ "${userHome}/.local" ];
+  env = {
+    MY_VAR = "my_value";
+    API_KEY = "secret";
+    LOG_LEVEL = "debug";
+  };
+};
+```
+
+These environment variables are set directly in the Docker image's `Env` configuration and are available to all processes running in the container.
+
 ## Building with Custom Configuration
 
 Use the `custom` output to build with custom packages:
@@ -107,6 +125,8 @@ nix build .#custom --impure --expr '
 The `buildImage` function accepts:
 
 - `packages` (list): Packages to include on top of nix base
+- `directories` (list): Directories to create in the image (can be strings or attrsets with `path` and `mode`)
+- `env` (attrset): Environment variables to set in the Docker image
 
 User configuration is read from `id.nix`:
 - `uid` (int): User ID

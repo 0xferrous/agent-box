@@ -25,6 +25,9 @@ with pkgs; [
   comma
   dua
   yazi
+  bat
+  delta
+  glow
 
   aiTools.pi
   aiTools.claude-code

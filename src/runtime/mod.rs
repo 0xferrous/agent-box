@@ -217,16 +217,19 @@ pub fn build_container_config(
 
 /// Check if a path is covered by any existing mount (exact match or subpath).
 /// Returns Some(existing_mode) if covered, None if not covered.
-fn find_covering_mount(host_path: &Path, existing_mounts: &[ResolvedMount]) -> Option<MountMode> {
+fn find_covering_mount<'a>(
+    host_path: &Path,
+    existing_mounts: &'a [ResolvedMount],
+) -> Option<&'a ResolvedMount> {
     for mount in existing_mounts {
         // Exact match - already mounted
         if host_path == mount.host {
-            return Some(mount.mode);
+            return Some(mount);
         }
 
         // Check if new path is under existing mount
         if host_path.starts_with(&mount.host) {
-            return Some(mount.mode);
+            return Some(mount);
         }
     }
     None
@@ -284,11 +287,12 @@ fn add_mounts(mounts: &[&Mount], binds: &mut Vec<String>) -> Result<()> {
         for resolved in mount_resolved {
             if let Some(existing_mode) = find_covering_mount(&resolved.host, &existing_resolved) {
                 // Check for invalid mode combinations
-                if is_incompatible_mode_combination(existing_mode, resolved.mode) {
+                if is_incompatible_mode_combination(existing_mode.mode, resolved.mode) {
                     return Err(eyre::eyre!(
-                        "Cannot mount '{}' as {} under read-only parent mount",
+                        "Cannot mount '{}' as {} under read-only parent mount {}",
                         resolved.host.display(),
-                        resolved.mode
+                        resolved.mode,
+                        existing_mode.host.display()
                     ));
                 }
                 // Otherwise skip - already covered
@@ -379,7 +383,7 @@ mod tests {
             container: PathBuf::from("/container/path"),
             mode: MountMode::Ro,
         }];
-        let result = find_covering_mount(Path::new("/host/path"), &mounts);
+        let result = find_covering_mount(Path::new("/host/path"), &mounts).map(|m| m.mode);
         assert_eq!(result, Some(MountMode::Ro));
     }
 
@@ -390,7 +394,8 @@ mod tests {
             container: PathBuf::from("/nix/store"),
             mode: MountMode::Ro,
         }];
-        let result = find_covering_mount(Path::new("/nix/store/abc123-package"), &mounts);
+        let result =
+            find_covering_mount(Path::new("/nix/store/abc123-package"), &mounts).map(|m| m.mode);
         assert_eq!(result, Some(MountMode::Ro));
     }
 
