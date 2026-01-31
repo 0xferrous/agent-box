@@ -1,6 +1,6 @@
 use eyre::{Context, Result};
 
-use super::ContainerConfig;
+use super::{ContainerConfig, print_command};
 
 /// Docker container runtime implementation
 pub struct DockerRuntime;
@@ -58,7 +58,7 @@ impl ContainerBackend for DockerRuntime {
             args.extend(command.clone());
         }
 
-        eprintln!("DEBUG: Running: docker {}", args.join(" "));
+        print_command("docker", &args);
 
         // Execute docker run with inherited stdio
         let status = std::process::Command::new("docker")

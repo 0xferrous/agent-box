@@ -1,7 +1,7 @@
 use eyre::{Context, Result};
 
-use super::ContainerConfig;
 use super::docker::ContainerBackend;
+use super::{ContainerConfig, print_command};
 
 /// Podman container runtime implementation
 pub struct PodmanRuntime;
@@ -61,7 +61,7 @@ impl ContainerBackend for PodmanRuntime {
             args.extend(command.clone());
         }
 
-        eprintln!("DEBUG: Running: podman {}", args.join(" "));
+        print_command("podman", &args);
 
         // Execute podman run with inherited stdio
         let status = std::process::Command::new("podman")

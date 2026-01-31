@@ -7,6 +7,26 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{Config, Mount, MountMode, ResolvedMount, ResolvedProfile};
 
+/// Pretty print a command with arguments, grouping flags with their values
+pub(crate) fn print_command(command: &str, args: &[String]) {
+    eprintln!("DEBUG: Running command:");
+    eprintln!("  {} \\", command);
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        let continuation = if i < args.len() - 1 { " \\" } else { "" };
+
+        // Check if this is a flag with a value (flag starts with -, next arg doesn't)
+        if arg.starts_with('-') && i + 1 < args.len() && !args[i + 1].starts_with('-') {
+            eprintln!("    {} {}{}", arg, args[i + 1], continuation);
+            i += 2; // Skip both the flag and its value
+        } else {
+            eprintln!("    {}{}", arg, continuation);
+            i += 1;
+        }
+    }
+}
+
 /// Configuration for running a container
 #[derive(Debug, Clone)]
 pub struct ContainerConfig {
@@ -122,6 +142,8 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
 /// - resolved_profile: resolved mounts and env from profile resolution
 /// - cli_mounts: additional mounts from CLI arguments
 /// - command: command arguments to pass to the container entrypoint
+/// - should_check: if true, perform mount validity checks
+/// - should_skip: if true, skip mounts that are already covered by parent mounts
 pub fn build_container_config(
     config: &Config,
     workspace_path: &Path,
@@ -131,6 +153,8 @@ pub fn build_container_config(
     resolved_profile: &ResolvedProfile,
     cli_mounts: &[Mount],
     command: Option<Vec<String>>,
+    should_check: bool,
+    should_skip: bool,
 ) -> Result<ContainerConfig> {
     let pb_to_str = |pb: &Path| {
         pb.canonicalize()
@@ -184,7 +208,7 @@ pub fn build_container_config(
         ));
     }
 
-    add_mounts(&all_mounts, &mut binds)?;
+    add_mounts(&all_mounts, &mut binds, should_check, should_skip)?;
 
     let uid = nix::unistd::getuid().as_raw();
     let gid = nix::unistd::getgid().as_raw();
@@ -246,23 +270,28 @@ fn is_incompatible_mode_combination(parent: MountMode, child: MountMode) -> bool
 
 /// Add mounts to the binds vector.
 /// Handles symlinks by mounting the entire symlink chain.
-/// Skips paths that are already covered by a parent mount.
-/// Returns error if trying to mount rw/overlay under a ro parent.
+/// Skips paths that are already covered by a parent mount (unless should_skip is false).
+/// Returns error if trying to mount rw/overlay under a ro parent (unless should_check is false).
 ///
 /// Mount mode compatibility matrix (existing parent → new child):
 ///
 /// | Parent | Child | Action |
 /// |--------|-------|--------|
-/// | ro     | ro    | Skip (covered) |
-/// | ro     | rw    | **Error** (can't write under ro) |
-/// | ro     | O     | **Error** (can't overlay under ro) |
-/// | rw     | ro    | Skip (covered, ro ⊆ rw) |
-/// | rw     | rw    | Skip (covered) |
-/// | rw     | O     | Skip (covered) |
-/// | O      | ro    | Skip (covered) |
-/// | O      | rw    | Skip (covered) |
-/// | O      | O     | Skip (covered) |
-fn add_mounts(mounts: &[&Mount], binds: &mut Vec<String>) -> Result<()> {
+/// | ro     | ro    | Skip (covered) [unless --no-skip] |
+/// | ro     | rw    | **Error** (can't write under ro) [unless --no-check] |
+/// | ro     | O     | **Error** (can't overlay under ro) [unless --no-check] |
+/// | rw     | ro    | Skip (covered, ro ⊆ rw) [unless --no-skip] |
+/// | rw     | rw    | Skip (covered) [unless --no-skip] |
+/// | rw     | O     | Skip (covered) [unless --no-skip] |
+/// | O      | ro    | Skip (covered) [unless --no-skip] |
+/// | O      | rw    | Skip (covered) [unless --no-skip] |
+/// | O      | O     | Skip (covered) [unless --no-skip] |
+fn add_mounts(
+    mounts: &[&Mount],
+    binds: &mut Vec<String>,
+    should_check: bool,
+    should_skip: bool,
+) -> Result<()> {
     // Parse existing binds into resolved mounts for coverage checking
     let mut existing_resolved: Vec<ResolvedMount> = binds
         .iter()
@@ -280,27 +309,47 @@ fn add_mounts(mounts: &[&Mount], binds: &mut Vec<String>) -> Result<()> {
         })
         .collect();
 
+    // First, resolve all mounts and collect them
+    let mut all_resolved: Vec<ResolvedMount> = Vec::new();
     for mount in mounts {
         // to_resolved_mounts handles existence check and symlink chain
         let mount_resolved = mount.to_resolved_mounts()?;
+        all_resolved.extend(mount_resolved);
+    }
 
-        for resolved in mount_resolved {
-            if let Some(existing_mode) = find_covering_mount(&resolved.host, &existing_resolved) {
-                // Check for invalid mode combinations
-                if is_incompatible_mode_combination(existing_mode.mode, resolved.mode) {
-                    return Err(eyre::eyre!(
-                        "Cannot mount '{}' as {} under read-only parent mount {}",
-                        resolved.host.display(),
-                        resolved.mode,
-                        existing_mode.host.display()
-                    ));
-                }
-                // Otherwise skip - already covered
-            } else {
-                // Not covered - add to existing resolved mounts and binds
+    // Sort by host path length (shortest first) so parent paths are processed before children.
+    // This ensures that when a symlink chain resolves to paths under /nix/store,
+    // the /nix/store mount is already in existing_resolved and coverage check works.
+    all_resolved.sort_by(|a, b| {
+        a.host
+            .as_os_str()
+            .len()
+            .cmp(&b.host.as_os_str().len())
+            .then_with(|| a.host.cmp(&b.host))
+    });
+
+    for resolved in all_resolved {
+        if let Some(existing_mode) = find_covering_mount(&resolved.host, &existing_resolved) {
+            // Check for invalid mode combinations (if should_check is true)
+            if should_check && is_incompatible_mode_combination(existing_mode.mode, resolved.mode) {
+                return Err(eyre::eyre!(
+                    "Cannot mount '{}' as {} under read-only parent mount {}",
+                    resolved.host.display(),
+                    resolved.mode,
+                    existing_mode.host.display()
+                ));
+            }
+            // Skip if covered (unless should_skip is false)
+            if !should_skip {
+                // Add even though it's covered
                 binds.push(resolved.to_bind_string());
                 existing_resolved.push(resolved);
             }
+            // Otherwise skip - already covered
+        } else {
+            // Not covered - add to existing resolved mounts and binds
+            binds.push(resolved.to_bind_string());
+            existing_resolved.push(resolved);
         }
     }
 
@@ -501,7 +550,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -530,7 +579,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -556,7 +605,7 @@ mod tests {
             mode: MountMode::Rw,
         };
 
-        let result = add_mounts(&[&mount], &mut binds);
+        let result = add_mounts(&[&mount], &mut binds, true, true);
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -583,7 +632,7 @@ mod tests {
             mode: MountMode::Overlay,
         };
 
-        let result = add_mounts(&[&mount], &mut binds);
+        let result = add_mounts(&[&mount], &mut binds, true, true);
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -610,7 +659,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -636,7 +685,7 @@ mod tests {
             mode: MountMode::Rw,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -662,7 +711,7 @@ mod tests {
             mode: MountMode::Overlay,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -688,7 +737,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -714,7 +763,7 @@ mod tests {
             mode: MountMode::Rw,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -740,13 +789,150 @@ mod tests {
             mode: MountMode::Overlay,
         };
 
-        add_mounts(&[&mount], &mut binds).unwrap();
+        add_mounts(&[&mount], &mut binds, true, true).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
 
         // Should still have just 1 mount
         assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_rw_under_ro_with_no_check_allowed() {
+        // rw mount under ro parent should succeed when should_check=false
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab_rw_ro_nocheck_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:ro", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        // Should succeed with should_check=false
+        add_mounts(&[&mount], &mut binds, false, true).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount (subdir skipped as covered)
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_overlay_under_ro_with_no_check_allowed() {
+        // overlay mount under ro parent should succeed when should_check=false
+        let temp_dir = std::env::temp_dir().join(format!("ab_o_ro_nocheck_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:ro", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Overlay,
+        };
+
+        // Should succeed with should_check=false
+        add_mounts(&[&mount], &mut binds, false, true).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should still have just 1 mount (subdir skipped as covered)
+        assert_eq!(binds.len(), 1);
+    }
+
+    #[test]
+    fn test_add_mounts_rw_under_rw_with_no_skip() {
+        // rw mount under rw parent should NOT be skipped when should_skip=false
+        let temp_dir = std::env::temp_dir().join(format!("ab_rw_rw_noskip_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:rw", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        // Should add even though it's covered, with should_skip=false
+        add_mounts(&[&mount], &mut binds, true, false).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have 2 mounts (parent + child)
+        assert_eq!(binds.len(), 2);
+    }
+
+    #[test]
+    fn test_add_mounts_ro_under_rw_with_no_skip() {
+        // ro mount under rw parent should NOT be skipped when should_skip=false
+        let temp_dir = std::env::temp_dir().join(format!("ab_ro_rw_noskip_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:rw", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        // Should add even though it's covered, with should_skip=false
+        add_mounts(&[&mount], &mut binds, true, false).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have 2 mounts (parent + child)
+        assert_eq!(binds.len(), 2);
+    }
+
+    #[test]
+    fn test_add_mounts_rw_under_ro_with_no_check_and_no_skip() {
+        // rw under ro should add when both should_check=false and should_skip=false
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab_rw_ro_nocheck_noskip_{}", std::process::id()));
+        let subdir = temp_dir.join("subdir");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let mut binds = vec![format!("{}:{}:ro", temp_dir.display(), temp_dir.display())];
+
+        let mount = Mount {
+            spec: subdir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        // Should add (no error because should_check=false, no skip because should_skip=false)
+        add_mounts(&[&mount], &mut binds, false, false).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have 2 mounts (parent + child)
+        assert_eq!(binds.len(), 2);
     }
 
     #[test]
