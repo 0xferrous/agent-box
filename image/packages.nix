@@ -28,7 +28,9 @@ with pkgs; [
   bat
   delta
   glow
+  bun
 
   aiTools.pi
   aiTools.claude-code
+  aiTools.tuicr
 ]
