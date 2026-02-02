@@ -324,6 +324,7 @@ mod tests {
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
+                skip_mounts: vec![],
                 env: Default::default(),
             },
         }
@@ -380,6 +381,7 @@ mod tests {
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
+                skip_mounts: vec![],
                 env: Default::default(),
             },
         };
@@ -415,6 +417,7 @@ mod tests {
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
+                skip_mounts: vec![],
                 env: Default::default(),
             },
         };
@@ -450,6 +453,7 @@ mod tests {
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
+                skip_mounts: vec![],
                 env: Default::default(),
             },
         };

@@ -3,9 +3,23 @@ pub mod podman;
 
 use docker::ContainerBackend;
 use eyre::Result;
+use glob::Pattern as GlobPattern;
 use std::path::{Path, PathBuf};
 
 use crate::config::{Config, Mount, MountMode, ResolvedMount, ResolvedProfile};
+
+/// Check if a path should be skipped based on configured skip patterns.
+/// Returns true if the path matches any of the skip patterns (supports globs).
+fn should_skip_path(path: &Path, skip_patterns: &[String]) -> bool {
+    let path_str = path.to_string_lossy();
+
+    skip_patterns.iter().any(|pattern_str| {
+        GlobPattern::new(pattern_str)
+            .ok()
+            .map(|p| p.matches(&path_str))
+            .unwrap_or(false)
+    })
+}
 
 /// Pretty print a command with arguments, grouping flags with their values
 pub(crate) fn print_command(command: &str, args: &[String]) {
@@ -222,7 +236,12 @@ pub fn build_container_config(
         ));
     }
 
-    add_mounts(&all_mounts, &mut binds, should_skip)?;
+    add_mounts(
+        &all_mounts,
+        &mut binds,
+        should_skip,
+        &config.runtime.skip_mounts,
+    )?;
 
     let uid = nix::unistd::getuid().as_raw();
     let gid = nix::unistd::getgid().as_raw();
@@ -276,6 +295,7 @@ fn find_covering_mount<'a>(
 /// Add mounts to the binds vector.
 /// Handles symlinks by mounting the entire symlink chain.
 /// Skips paths that are already covered by a parent mount (unless should_skip is false).
+/// Skips paths that match configured skip_mounts patterns (supports globs).
 ///
 /// Mount mode behavior (existing parent → new child):
 ///
@@ -290,7 +310,12 @@ fn find_covering_mount<'a>(
 /// | O      | ro    | Skip (covered) [unless --no-skip] |
 /// | O      | rw    | Skip (covered) [unless --no-skip] |
 /// | O      | O     | Skip (covered) [unless --no-skip] |
-fn add_mounts(mounts: &[&Mount], binds: &mut Vec<String>, should_skip: bool) -> Result<()> {
+fn add_mounts(
+    mounts: &[&Mount],
+    binds: &mut Vec<String>,
+    should_skip: bool,
+    skip_patterns: &[String],
+) -> Result<()> {
     // Parse existing binds into resolved mounts for coverage checking
     let mut existing_resolved: Vec<ResolvedMount> = binds
         .iter()
@@ -328,6 +353,15 @@ fn add_mounts(mounts: &[&Mount], binds: &mut Vec<String>, should_skip: bool) -> 
     });
 
     for resolved in all_resolved {
+        // Check if this path should be skipped based on configured skip patterns
+        if should_skip_path(&resolved.host, skip_patterns) {
+            eprintln!(
+                "DEBUG: Skipping mount path matching skip_mounts pattern: {}",
+                resolved.host.display(),
+            );
+            continue;
+        }
+
         if let Some(_existing_mode) = find_covering_mount(&resolved.host, &existing_resolved) {
             // Skip if covered (unless should_skip is false)
             if !should_skip {
@@ -495,7 +529,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -524,7 +558,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -550,7 +584,7 @@ mod tests {
             mode: MountMode::Rw,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -576,7 +610,7 @@ mod tests {
             mode: MountMode::Overlay,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -602,7 +636,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -628,7 +662,7 @@ mod tests {
             mode: MountMode::Rw,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -654,7 +688,7 @@ mod tests {
             mode: MountMode::Overlay,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -680,7 +714,7 @@ mod tests {
             mode: MountMode::Ro,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -706,7 +740,7 @@ mod tests {
             mode: MountMode::Rw,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -732,7 +766,7 @@ mod tests {
             mode: MountMode::Overlay,
         };
 
-        add_mounts(&[&mount], &mut binds, true).unwrap();
+        add_mounts(&[&mount], &mut binds, true, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -759,7 +793,7 @@ mod tests {
         };
 
         // Should add even though it's covered, with should_skip=false
-        add_mounts(&[&mount], &mut binds, false).unwrap();
+        add_mounts(&[&mount], &mut binds, false, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -786,7 +820,7 @@ mod tests {
         };
 
         // Should add even though it's covered, with should_skip=false
-        add_mounts(&[&mount], &mut binds, false).unwrap();
+        add_mounts(&[&mount], &mut binds, false, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -813,7 +847,7 @@ mod tests {
         };
 
         // Should add even though it's covered, when should_skip=false
-        add_mounts(&[&mount], &mut binds, false).unwrap();
+        add_mounts(&[&mount], &mut binds, false, &[]).unwrap();
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
@@ -987,6 +1021,134 @@ mod tests {
         assert_eq!(MountMode::Ro.as_str(), "ro");
         assert_eq!(MountMode::Rw.as_str(), "rw");
         assert_eq!(MountMode::Overlay.as_str(), "O");
+    }
+
+    #[test]
+    fn test_should_skip_path() {
+        // Test exact string matching (no wildcards) - glob crate matches exact strings
+        let skip_paths = vec!["/nix/store".to_string(), "/nix/var/nix".to_string()];
+
+        assert!(should_skip_path(Path::new("/nix/store"), &skip_paths));
+        // With glob crate, exact string patterns don't do prefix matching
+        assert!(!should_skip_path(
+            Path::new("/nix/store/package"),
+            &skip_paths
+        ));
+        assert!(should_skip_path(Path::new("/nix/var/nix"), &skip_paths));
+        assert!(!should_skip_path(Path::new("/home/user"), &skip_paths));
+        assert!(!should_skip_path(Path::new("/nix"), &skip_paths));
+        assert!(!should_skip_path(Path::new("/tmp"), &skip_paths));
+    }
+
+    #[test]
+    fn test_glob_pattern_matching() {
+        // Test glob patterns using glob crate
+        let skip_patterns = vec![
+            "/nix/store/glibc*".to_string(),
+            "/tmp/test-*.txt".to_string(),
+        ];
+
+        // Exact paths don't match
+        assert!(!should_skip_path(Path::new("/nix/store"), &skip_patterns));
+
+        // Matches glob patterns
+        assert!(should_skip_path(
+            Path::new("/nix/store/glibc-2.39"),
+            &skip_patterns
+        ));
+        assert!(should_skip_path(
+            Path::new("/nix/store/glibc-2.39-123"),
+            &skip_patterns
+        ));
+        assert!(should_skip_path(
+            Path::new("/tmp/test-file.txt"),
+            &skip_patterns
+        ));
+        assert!(should_skip_path(
+            Path::new("/tmp/test-123.txt"),
+            &skip_patterns
+        ));
+
+        // Non-matching paths
+        assert!(!should_skip_path(
+            Path::new("/nix/store/rustc-1.70"),
+            &skip_patterns
+        ));
+        assert!(!should_skip_path(
+            Path::new("/tmp/test-file"),
+            &skip_patterns
+        ));
+        assert!(!should_skip_path(
+            Path::new("/tmp/other.txt"),
+            &skip_patterns
+        ));
+    }
+
+    #[test]
+    fn test_add_mounts_skips_special_paths() {
+        // Test that paths matching skip_mounts are filtered out
+        // Create a symlink under /tmp that points to /nix (which would be in skip_paths)
+        let temp_dir = std::env::temp_dir().join(format!("ab_skip_paths_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let nix_symlink = temp_dir.join("nix-link");
+        // Create a symlink to /nix (which exists on NixOS systems)
+        let _ = std::os::unix::fs::symlink("/nix", &nix_symlink);
+
+        let mut binds = vec![];
+
+        let mount = Mount {
+            spec: nix_symlink.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        // With skip paths matching /nix, the resolved /nix path should be skipped
+        // But the symlink itself should still be added
+        add_mounts(&[&mount], &mut binds, true, &["/nix".to_string()]).unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have 1 mount (the symlink itself, but not /nix)
+        // Note: on non-NixOS systems, /nix might not exist, so the mount might be filtered out
+        // as non-existent. We just check it's either 0 or 1 (not more).
+        assert!(binds.len() <= 1);
+    }
+
+    #[test]
+    fn test_add_mounts_skip_paths_always_respected() {
+        // Test that skip_mounts are always respected, even when should_skip=false
+        let temp_dir = std::env::temp_dir().join(format!("ab_skip_always_{}", std::process::id()));
+        let nix_dir = temp_dir.join("nix");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&nix_dir).unwrap();
+
+        let mut binds = vec![];
+
+        let mount = Mount {
+            spec: nix_dir.to_string_lossy().to_string(),
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        // Even though should_skip=false, skip_mounts should still be respected
+        // (special paths should never be mounted)
+        add_mounts(
+            &[&mount],
+            &mut binds,
+            false, // should_skip=false only affects coverage checks, not skip_mounts
+            &[nix_dir.to_string_lossy().to_string()],
+        )
+        .unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have 0 mounts (skipped due to skip_mounts)
+        assert_eq!(binds.len(), 0);
     }
 
     #[test]

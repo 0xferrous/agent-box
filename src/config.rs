@@ -494,6 +494,8 @@ pub struct RuntimeConfig {
     pub mounts: MountsConfig,
     #[serde(default)]
     pub env: Vec<String>,
+    #[serde(default)]
+    pub skip_mounts: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -1377,6 +1379,7 @@ mod tests {
                 entrypoint: None,
                 mounts: MountsConfig::default(),
                 env: vec!["BASE=1".to_string()],
+                skip_mounts: vec![],
             },
         }
     }
@@ -2014,7 +2017,7 @@ mod tests {
         };
 
         let resolved_mounts = mount.to_resolved_mounts().unwrap();
-        let bind_strings: Vec<String> = resolved_mounts
+        let _bind_strings: Vec<String> = resolved_mounts
             .iter()
             .map(|rm| rm.to_bind_string())
             .collect();

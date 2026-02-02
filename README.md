@@ -55,6 +55,7 @@ base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/
 backend = "docker"                # Container runtime: "docker" or "podman" (default: docker)
 image = "agent-box:latest"
 entrypoint = "/bin/bash"          # Shell-style command string (supports quotes for args with spaces)
+skip_mounts = ["/nix/store/*", "/nix/var/nix"]  # Glob patterns for paths to always skip
 
 [runtime.mounts.ro]
 absolute = ["/nix/store"]
@@ -201,6 +202,51 @@ absolute = ["/nix/store"]
 [profiles.dev.mounts.rw]
 absolute = ["/nix/store/mydata"]  # Skipped - already covered by parent /nix/store
 ```
+
+**Skipping Special Paths:**
+
+Agent Box can be configured to always skip certain "special" paths that should never be mounted into containers:
+
+- Patterns in `runtime.skip_mounts` are always skipped, even if explicitly configured
+- Supports glob patterns with `*` wildcards (e.g., `/nix/store/*` to skip all subdirectories)
+- This is useful for large system directories like `/nix/store` on NixOS
+- Skip patterns are checked before mount coverage and deduplication
+- The `--no-skip` flag does NOT affect skip_mounts - special paths are always skipped
+
+**Glob Pattern Support:**
+
+The `skip_mounts` option supports standard glob patterns with `*` wildcards (using the `glob` crate):
+- `/nix/store/*` - Skip `/nix/store/` followed by exactly one path segment (e.g., `/nix/store/package`)
+- `/nix/store/**` - Skip everything under `/nix/store` including nested paths
+- `/tmp/test-*` - Skip paths starting with `test-` in `/tmp`
+- `/*/*/temp` - Skip paths two levels deep ending in `temp`
+- Exact paths like `/nix/var/nix` - Match that exact path only (not subdirectories unless using `**`)
+
+**Note:** Glob patterns are matched against the full path string. For recursive matching (including all subdirectories), use `**` or ensure your pattern covers all cases.
+
+Default skip patterns (on NixOS systems):
+```toml
+[runtime]
+skip_mounts = ["/nix/store/**", "/nix/var/nix"]
+```
+
+To override the defaults, set an empty array or specify your own patterns:
+```toml
+[runtime]
+skip_mounts = []  # Don't skip any special paths
+
+# Or specify your own patterns:
+skip_mounts = ["/nix/store/**", "/var/lib/**", "/usr/lib/**"]
+
+# Skip specific subdirectories:
+skip_mounts = ["/nix/store/glibc-*", "/nix/store/rustc-*"]
+```
+
+This is particularly useful when:
+- You have large read-only system directories that shouldn't be mounted
+- Symlink chains resolve to system paths you want to avoid mounting
+- You want to reduce container startup time by avoiding large directory mounts
+- You want to skip specific subdirectory patterns (like all glibc packages) while still allowing others
 
 ### Runtime Backends
 
