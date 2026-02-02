@@ -168,22 +168,58 @@ impl ContainerBackend for PodmanRuntime {
         eprintln!("  Image: {}", config.image);
         eprintln!("  Entrypoint: {:?}", config.entrypoint);
         eprintln!("  Command: {:?}", config.command);
-        eprintln!("  User: {}", config.user);
+        if config.uidmap {
+            let uid_gid: Vec<&str> = config.user.split(':').collect();
+            let uid = uid_gid.first().unwrap_or(&"1000");
+            let gid = uid_gid.get(1).unwrap_or(&"100");
+            eprintln!("  User: root (mapped to host user {})", config.user);
+            eprintln!("  UID mapping: container UID 0 -> host UID {}", uid);
+            eprintln!("               container UIDs 1-65536 -> host UIDs 100000-165536");
+            eprintln!("  GID mapping: container GID 0 -> host GID {}", gid);
+            eprintln!("               container GIDs 1-65536 -> host GIDs 100000-165536");
+        } else {
+            eprintln!("  User: {}", config.user);
+        }
         eprintln!("  Working dir: {}", config.working_dir);
         eprintln!("  Mounts: {} volumes", config.mounts.len());
         eprintln!("  Env vars: {} variables", config.env.len());
 
-        let mut args = vec![
-            "run".to_string(),
-            "--rm".to_string(),
-            "-it".to_string(),
-            "--userns".to_string(),
-            "keep-id".to_string(),
-            "--user".to_string(),
-            config.user.clone(),
-            "--workdir".to_string(),
-            config.working_dir.clone(),
-        ];
+        let mut args = vec!["run".to_string(), "--rm".to_string(), "-it".to_string()];
+
+        // Add user namespace configuration
+        if config.uidmap {
+            // Use UID/GID mapping: container root (UID 0) maps to host user
+            // This allows creating mount points in root-owned directories
+            let uid_gid: Vec<&str> = config.user.split(':').collect();
+            let uid = uid_gid.first().unwrap_or(&"1000");
+            let gid = uid_gid.get(1).unwrap_or(&"100");
+
+            // Map container UID 0 (root) to host user
+            args.push("--uidmap".to_string());
+            args.push(format!("0:{}:1", uid));
+
+            // Map container GID 0 (root) to host group
+            // args.push("--gidmap".to_string());
+            // args.push(format!("0:{}:1", gid));
+
+            // Map remaining UIDs using subuid range
+            // This ensures container UIDs like 1000 (if in image) are mapped
+            args.push("--uidmap".to_string());
+            args.push("1:100000:65536".to_string());
+
+            // Map remaining GIDs using subgid range
+            args.push("--gidmap".to_string());
+            args.push("1:100000:65536".to_string());
+        } else {
+            // Standard user namespace with keep-id
+            args.push("--userns".to_string());
+            args.push("keep-id".to_string());
+            // args.push("--user".to_string());
+            // args.push(config.user.clone());
+        }
+
+        args.push("--workdir".to_string());
+        args.push(config.working_dir.clone());
 
         // Add mounts
         for mount in &config.mounts {

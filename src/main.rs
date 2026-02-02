@@ -89,6 +89,11 @@ enum Commands {
         /// Don't skip mounts that are already covered by parent mounts
         #[arg(long)]
         no_skip: bool,
+        /// Use UID/GID mapping to run as root inside container (Podman only).
+        /// Maps container UID 0 to host user, allowing creation of mount points
+        /// in root-owned directories. Files still owned by host user.
+        #[arg(long)]
+        uidmap: bool,
     },
     /// Debug commands (hidden from main help)
     #[command(hide = true)]
@@ -196,6 +201,7 @@ fn run() -> eyre::Result<()> {
             mount_abs,
             profile,
             no_skip,
+            uidmap,
         } => {
             let wtype = if git {
                 WorkspaceType::Git
@@ -244,6 +250,7 @@ fn run() -> eyre::Result<()> {
                 &cli_mounts,
                 command,
                 !no_skip,
+                uidmap,
             ) {
                 Ok(cfg) => cfg,
                 Err(e) => {

@@ -28,6 +28,8 @@ with pkgs; [
   bat
   delta
   glow
+  procps
+  podman
 
   aiTools.pi
   aiTools.claude-code

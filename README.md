@@ -487,6 +487,12 @@ ab spawn -s my-session -m /run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent
 
 # Combine profiles with additional mounts
 ab spawn -s my-session -p rust -m ~/project-data
+
+# Use UID mapping to run as root inside container (Podman only)
+ab spawn -s my-session --uidmap
+
+# Disable mount deduplication
+ab spawn -s my-session --no-skip
 ```
 
 **Session vs Local mode:**
@@ -512,6 +518,31 @@ Examples:
 -M o:/tmp/cache     # overlay mount (Podman only)
 -m ~/src:/app       # explicit mapping: ~/src on host → /app in container
 ```
+
+**UID Mapping (`--uidmap`):**
+
+The `--uidmap` flag enables Podman user namespace mapping, making you appear as root inside the container while files are still owned by your host user.
+
+Use case:
+- When rootless Podman can't create mount points in root-owned directories (e.g., `/nix/store`)
+- When you need to install packages or modify system files inside the container
+- When symlink resolution fails due to permission issues
+
+How it works:
+- Maps container UID 0 (root) → host UID (your user)
+- Maps container UIDs 1-65536 → host subuid range (100000-165536)
+- Inside container: `uid=0(root)`
+- Files created: still owned by your host user
+- Mount points: can be created anywhere
+- Podman handles GID mapping automatically (no manual configuration needed)
+
+**Podman only** - will error if used with Docker backend.
+
+**Warning**: Only maps a single user (root) by default. Multi-user programs (nginx, postgres) that expect specific UIDs may behave differently.
+
+**Deduplication (`--no-skip`):**
+
+By default, agent-box skips mounts that are already covered by parent mounts (e.g., if `/nix/store` is mounted, `/nix/store/package` is skipped). Use `--no-skip` to disable this optimization and mount everything explicitly.
 
 ## How It Works
 
