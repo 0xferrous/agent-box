@@ -29,6 +29,9 @@ with pkgs; [
   delta
   glow
   bun
+  uv
+  ty
+  mypy
 
   aiTools.pi
   aiTools.claude-code
