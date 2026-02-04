@@ -32,6 +32,9 @@ with pkgs; [
   uv
   ty
   mypy
+  nix-search-tv
+  gh
+  direnv
 
   aiTools.pi
   aiTools.claude-code

@@ -110,6 +110,9 @@
                 mkdir -p ./is-container
                 chmod 555 ./is-container
                 chown 0:0 ./is-container
+
+                # Setup direnv in bashrc
+                echo 'eval "$(direnv hook bash)"' >> ./home/${uname}/.bashrc
               ''
               + dirCommands;
             };
@@ -120,7 +123,7 @@
         {
           default = buildImage {
             packages = defaultPackages;
-            directories = [ "${userHome}/.local" ];
+            directories = [ "${userHome}/.local" "${userHome}/.cache" ];
             env = {
               EDITOR = "nvim";
             };
@@ -151,7 +154,13 @@
             packages = with pkgs; [
               docker
               nixfmt-rfc-style
+              direnv
             ];
+
+            shellHook = ''
+              # Setup direnv
+              eval "$(direnv hook bash)"
+            '';
           };
         }
       );
