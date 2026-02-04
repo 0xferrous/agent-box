@@ -326,6 +326,7 @@ mod tests {
                 mounts: Default::default(),
                 skip_mounts: vec![],
                 env: Default::default(),
+                ports: Default::default(),
             },
         }
     }
@@ -383,6 +384,7 @@ mod tests {
                 mounts: Default::default(),
                 skip_mounts: vec![],
                 env: Default::default(),
+                ports: Default::default(),
             },
         };
 
@@ -419,6 +421,7 @@ mod tests {
                 mounts: Default::default(),
                 skip_mounts: vec![],
                 env: Default::default(),
+                ports: Default::default(),
             },
         };
 
@@ -455,6 +458,7 @@ mod tests {
                 mounts: Default::default(),
                 skip_mounts: vec![],
                 env: Default::default(),
+                ports: Default::default(),
             },
         };
 

@@ -89,6 +89,11 @@ enum Commands {
         /// Example: -p git -p rust
         #[arg(long, short = 'p', value_name = "PROFILE")]
         profile: Vec<String>,
+        /// Port mapping to expose (can be specified multiple times).
+        /// Format: [HOST_IP:]HOST_PORT:CONTAINER_PORT or just CONTAINER_PORT.
+        /// Example: -P 8080:8080 -P 3000 -P 127.0.0.1:9090:9090
+        #[arg(long, short = 'P', value_name = "PORT")]
+        port: Vec<String>,
         /// Don't skip mounts that are already covered by parent mounts
         #[arg(long)]
         no_skip: bool,
@@ -199,6 +204,7 @@ fn run() -> eyre::Result<()> {
             mount,
             mount_abs,
             profile,
+            port,
             no_skip,
         } => {
             let wtype = if git {
@@ -247,6 +253,7 @@ fn run() -> eyre::Result<()> {
                 entrypoint.as_deref(),
                 &resolved_profile,
                 &cli_mounts,
+                &port,
                 command,
                 !no_skip,
             ) {
@@ -413,6 +420,16 @@ fn run() -> eyre::Result<()> {
                 } else {
                     for e in &resolved.env {
                         println!("    {}", e);
+                    }
+                }
+
+                // Show ports
+                println!("\n  Ports:");
+                if resolved.ports.is_empty() {
+                    println!("    (none)");
+                } else {
+                    for p in &resolved.ports {
+                        println!("    {}", p);
                     }
                 }
             }

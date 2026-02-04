@@ -23,6 +23,7 @@ Agent Box solves this by:
 - [Configuration](#configuration)
   - [Layered Configuration](#layered-configuration)
   - [Mount Path Syntax](#mount-path-syntax)
+  - [Port Mappings](#port-mappings)
   - [Runtime Backends](#runtime-backends)
   - [Profiles](#profiles)
   - [Validating Configuration](#validating-configuration)
@@ -56,6 +57,7 @@ backend = "docker"                # Container runtime: "docker" or "podman" (def
 image = "agent-box:latest"
 entrypoint = "/bin/bash"          # Shell-style command string (supports quotes for args with spaces)
 skip_mounts = ["/nix/store/*", "/nix/var/nix"]  # Glob patterns for paths to always skip
+ports = ["8080:8080"]                # Port mappings (Docker -p syntax)
 
 [runtime.mounts.ro]
 absolute = ["/nix/store"]
@@ -266,6 +268,51 @@ This is particularly useful when:
 - You want to reduce container startup time by avoiding large directory mounts
 - You want to skip specific subdirectory patterns (like all glibc packages) while still allowing others
 
+### Port Mappings
+
+Port mappings expose container ports to the host, using the same layered configuration system as mounts and environment variables.
+
+**Configuration:**
+
+```toml
+[runtime]
+ports = ["8080:8080", "3000:3000"]
+
+[profiles.dev]
+ports = ["9000:9000"]
+```
+
+**Format:**
+
+Port specs follow Docker's `-p` syntax:
+
+- `CONTAINER_PORT` — Expose a container port on a random host port
+- `HOST_PORT:CONTAINER_PORT` — Map a specific host port to a container port
+- `HOST_IP:HOST_PORT:CONTAINER_PORT` — Bind to a specific host IP
+- `HOST_PORT-END:CONTAINER_PORT-END` — Port ranges
+
+**CLI:**
+
+```bash
+# Expose port 8080 on host and container
+ab spawn -s my-session -P 8080:8080
+
+# Multiple ports
+ab spawn -s my-session -P 8080:8080 -P 3000:3000
+
+# Combine with profiles (profile ports + CLI ports are merged)
+ab spawn -s my-session -p dev -P 9000:9000
+```
+
+**Resolution order:**
+
+1. `runtime.ports` (always applied first)
+2. `default_profile` ports (if set)
+3. CLI profiles (`-p`) ports in the order specified
+4. CLI ports (`-P`) applied last
+
+Duplicate port specs (exact string match) are automatically deduplicated — if the same spec appears in multiple profiles or on the CLI, only the first occurrence is kept.
+
 ### Runtime Backends
 
 Agent Box supports two container runtimes:
@@ -313,6 +360,10 @@ home_relative = ["~/.cargo/config.toml"]
 [profiles.rust.mounts.rw]
 home_relative = ["~/.cargo/registry"]
 
+[profiles.dev]
+extends = ["rust"]
+ports = ["8080:8080", "3000:3000"]  # Port mappings (inherited by children)
+
 [profiles.gpg]
 [profiles.gpg.mounts.o]  # Overlay (Podman only)
 home_relative = ["~/.gnupg"]
@@ -335,8 +386,8 @@ ab spawn -s my-session -p git
 # Combine multiple profiles
 ab spawn -s my-session -p git -p rust -p gpg
 
-# Profiles + additional CLI mounts
-ab spawn -s my-session -p rust -m ~/my-data
+# Profiles + additional CLI mounts and ports
+ab spawn -s my-session -p rust -m ~/my-data -P 8080:8080
 ```
 
 **Profile inheritance with `extends`:**
@@ -365,7 +416,7 @@ Using `-p dev` results in env: `["A=1", "B=2", "C=3"]`
 3. CLI profiles (`-p`) in the order specified
 4. CLI mounts (`-m`, `-M`) applied last
 
-Arrays (mounts, env) are concatenated. Duplicate mount paths (exact string match) are automatically deduplicated - if the same mount spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
+Arrays (mounts, env, ports) are concatenated. Duplicate mount paths and port specs (exact string match) are automatically deduplicated - if the same spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
 
 **Profiles with layered configuration:**
 
@@ -440,7 +491,7 @@ Errors:
   ✗ Profile 'broken': extends unknown profile 'also_nonexistent'. Available profiles: ["base", "git"]
 
 Warnings:
-  ⚠ Profile 'empty': profile is empty (no mounts, env, or extends)
+  ⚠ Profile 'empty': profile is empty (no mounts, env, ports, or extends)
 
 Configuration invalid: 2 error(s), 1 warning(s).
 ```
@@ -477,6 +528,10 @@ Resolved config:
 
   Environment:
     NIX_REMOTE=daemon
+
+  Ports:
+    8080:8080
+    3000:3000
 ```
 
 The output shows both the mount spec and the resolved bind string (`host:container:mode`).
@@ -549,8 +604,11 @@ ab spawn -s my-session -M /nix/store -M ro:/etc/hosts
 ab spawn -s my-session -m rw:~/src:/app/src
 ab spawn -s my-session -m /run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent
 
-# Combine profiles with additional mounts
-ab spawn -s my-session -p rust -m ~/project-data
+# Expose ports
+ab spawn -s my-session -P 8080:8080 -P 3000
+
+# Combine profiles with additional mounts and ports
+ab spawn -s my-session -p rust -m ~/project-data -P 8080:8080
 ```
 
 **Session vs Local mode:**

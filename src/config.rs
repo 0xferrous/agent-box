@@ -505,7 +505,7 @@ impl MountsConfig {
     }
 }
 
-/// A profile defines a named set of mounts and environment variables.
+/// A profile defines a named set of mounts, environment variables, and port mappings.
 /// Profiles can extend other profiles via the `extends` field.
 #[derive(Debug, Deserialize, Default, Clone, PartialEq)]
 pub struct ProfileConfig {
@@ -518,6 +518,9 @@ pub struct ProfileConfig {
     /// Environment variables defined by this profile
     #[serde(default)]
     pub env: Vec<String>,
+    /// Port mappings defined by this profile (Docker `-p` syntax)
+    #[serde(default)]
+    pub ports: Vec<String>,
 }
 
 /// Deserialize entrypoint from a shell-style string into Vec<String>
@@ -546,6 +549,9 @@ pub struct RuntimeConfig {
     pub mounts: MountsConfig,
     #[serde(default)]
     pub env: Vec<String>,
+    /// Port mappings to expose (Docker `-p` syntax: `[HOST_IP:]HOST_PORT:CONTAINER_PORT`)
+    #[serde(default)]
+    pub ports: Vec<String>,
     #[serde(default)]
     pub skip_mounts: Vec<String>,
 }
@@ -564,11 +570,12 @@ pub struct Config {
     pub runtime: RuntimeConfig,
 }
 
-/// Resolved mounts and env from profile resolution
+/// Resolved mounts, env, and ports from profile resolution
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ResolvedProfile {
     pub mounts: Vec<Mount>,
     pub env: Vec<String>,
+    pub ports: Vec<String>,
 }
 
 impl ResolvedProfile {
@@ -576,6 +583,7 @@ impl ResolvedProfile {
     pub fn merge(&mut self, other: &ResolvedProfile) {
         self.mounts.extend(other.mounts.iter().cloned());
         self.env.extend(other.env.iter().cloned());
+        self.ports.extend(other.ports.iter().cloned());
     }
 
     /// Deduplicate mounts by resolved path (first occurrence wins).
@@ -603,6 +611,12 @@ impl ResolvedProfile {
                 .unwrap_or_else(|_| format!("{}:{}:{}", m.spec, m.home_relative, m.mode));
             seen.insert(key)
         });
+    }
+
+    /// Deduplicate ports by exact string match (first occurrence wins).
+    pub fn dedup_ports(&mut self) {
+        let mut seen = HashSet::new();
+        self.ports.retain(|p| seen.insert(p.clone()));
     }
 
     /// Get mount specs filtered by mode and home_relative flag (for testing)
@@ -647,6 +661,7 @@ pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<Res
     let mut resolved = ResolvedProfile {
         mounts: config.runtime.mounts.to_mounts(),
         env: config.runtime.env.clone(),
+        ports: config.runtime.ports.clone(),
     };
 
     let profiles_to_apply = collect_profiles_to_apply(config, profile_names);
@@ -657,8 +672,9 @@ pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<Res
         resolved.merge(&profile_resolved);
     }
 
-    // Deduplicate mounts (exact spec match)
+    // Deduplicate mounts and ports (exact spec match)
     resolved.dedup_mounts();
+    resolved.dedup_ports();
 
     Ok(resolved)
 }
@@ -699,9 +715,10 @@ fn resolve_single_profile(
         resolved.merge(&parent_resolved);
     }
 
-    // Then apply this profile's own mounts and env
+    // Then apply this profile's own mounts, env, and ports
     resolved.mounts.extend(profile.mounts.to_mounts());
     resolved.env.extend(profile.env.iter().cloned());
+    resolved.ports.extend(profile.ports.iter().cloned());
 
     // Remove from visited after processing (allow same profile in different branches)
     visited.remove(profile_name);
@@ -842,9 +859,10 @@ pub fn validate_config(config: &Config) -> ValidationResult {
             });
         }
 
-        // Warn about empty profiles (no mounts, no env, no extends)
+        // Warn about empty profiles (no mounts, no env, no ports, no extends)
         if profile.extends.is_empty()
             && profile.env.is_empty()
+            && profile.ports.is_empty()
             && profile.mounts.ro.absolute.is_empty()
             && profile.mounts.ro.home_relative.is_empty()
             && profile.mounts.rw.absolute.is_empty()
@@ -854,7 +872,7 @@ pub fn validate_config(config: &Config) -> ValidationResult {
         {
             warnings.push(ProfileValidationError {
                 profile_name: Some(profile_name.clone()),
-                message: "profile is empty (no mounts, env, or extends)".to_string(),
+                message: "profile is empty (no mounts, env, ports, or extends)".to_string(),
             });
         }
     }
@@ -1431,6 +1449,7 @@ mod tests {
                 entrypoint: None,
                 mounts: MountsConfig::default(),
                 env: vec!["BASE=1".to_string()],
+                ports: vec![],
                 skip_mounts: vec![],
             },
         }
@@ -1461,6 +1480,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec!["GIT=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1490,6 +1510,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec!["PROFILE_BASE=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1506,6 +1527,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec!["GIT=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1535,6 +1557,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["DEFAULT=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1544,6 +1567,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["EXTRA=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1563,6 +1587,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["GIT=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1572,6 +1597,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["RUST=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1591,6 +1617,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["BASE_PROFILE=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1600,6 +1627,7 @@ mod tests {
                 extends: vec!["base".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["GIT=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1609,6 +1637,7 @@ mod tests {
                 extends: vec!["base".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["JJ=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1618,6 +1647,7 @@ mod tests {
                 extends: vec!["git".to_string(), "jj".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["DEV=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -1649,6 +1679,7 @@ mod tests {
                 extends: vec!["b".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1658,6 +1689,7 @@ mod tests {
                 extends: vec!["a".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1677,6 +1709,7 @@ mod tests {
                 extends: vec!["self".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1706,6 +1739,7 @@ mod tests {
                 extends: vec!["nonexistent".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1735,6 +1769,7 @@ mod tests {
                     o: MountPaths::default(),
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1754,6 +1789,7 @@ mod tests {
                     },
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1801,6 +1837,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1817,6 +1854,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1852,6 +1890,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1867,6 +1906,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1882,6 +1922,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1891,6 +1932,7 @@ mod tests {
                 extends: vec!["git".to_string(), "jj".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1930,6 +1972,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1946,6 +1989,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1983,6 +2027,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -1998,6 +2043,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -2454,6 +2500,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["A=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -2483,6 +2530,7 @@ mod tests {
                 extends: vec!["nonexistent".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -2502,6 +2550,7 @@ mod tests {
                 extends: vec!["self_ref".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -2525,6 +2574,7 @@ mod tests {
                 extends: vec!["b".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
         config.profiles.insert(
@@ -2533,6 +2583,7 @@ mod tests {
                 extends: vec!["c".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
         config.profiles.insert(
@@ -2541,6 +2592,7 @@ mod tests {
                 extends: vec!["a".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -2559,13 +2611,18 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
         let result = validate_config(&config);
         assert!(result.is_ok()); // warnings don't make it invalid
         assert!(result.has_warnings());
-        assert!(result.warnings[0].message.contains("empty"));
+        assert!(
+            result.warnings[0]
+                .message
+                .contains("no mounts, env, ports, or extends")
+        );
     }
 
     #[test]
@@ -2578,6 +2635,7 @@ mod tests {
                 extends: vec!["also_nonexistent".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
         config.profiles.insert(
@@ -2586,6 +2644,7 @@ mod tests {
                 extends: vec!["broken2".to_string()], // self-reference
                 mounts: MountsConfig::default(),
                 env: vec![],
+                ports: vec![],
             },
         );
 
@@ -2604,6 +2663,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["A=1".to_string()],
+                ports: vec![],
             },
         );
 
@@ -2641,6 +2701,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["A=1".to_string()],
+                ports: vec![],
             },
         );
         config.profiles.insert(
@@ -2649,6 +2710,7 @@ mod tests {
                 extends: vec!["a".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["B=1".to_string()],
+                ports: vec![],
             },
         );
         config.profiles.insert(
@@ -2657,6 +2719,7 @@ mod tests {
                 extends: vec!["b".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["C=1".to_string()],
+                ports: vec![],
             },
         );
         config.profiles.insert(
@@ -2665,6 +2728,7 @@ mod tests {
                 extends: vec!["c".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["D=1".to_string()],
+                ports: vec![],
             },
         );
         config.default_profile = Some("d".to_string());

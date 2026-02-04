@@ -172,6 +172,7 @@ impl ContainerBackend for PodmanRuntime {
         eprintln!("  Working dir: {}", config.working_dir);
         eprintln!("  Mounts: {} volumes", config.mounts.len());
         eprintln!("  Env vars: {} variables", config.env.len());
+        eprintln!("  Ports: {} mappings", config.ports.len());
 
         let mut args = vec![
             "run".to_string(),
@@ -195,6 +196,12 @@ impl ContainerBackend for PodmanRuntime {
         for env in &config.env {
             args.push("-e".to_string());
             args.push(env.clone());
+        }
+
+        // Add port mappings
+        for port in &config.ports {
+            args.push("-p".to_string());
+            args.push(port.clone());
         }
 
         // Add entrypoint if specified

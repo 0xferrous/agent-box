@@ -4,6 +4,7 @@ pub mod podman;
 use docker::ContainerBackend;
 use eyre::Result;
 use glob::Pattern as GlobPattern;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::config::{Config, Mount, MountMode, ResolvedMount, ResolvedProfile};
@@ -51,6 +52,7 @@ pub struct ContainerConfig {
     pub working_dir: String,
     pub mounts: Vec<String>,
     pub env: Vec<String>,
+    pub ports: Vec<String>,
 }
 
 /// Enum of available container runtimes
@@ -170,8 +172,9 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
 /// - source_path: the source repo to mount .git/.jj from
 /// - local: if true, workspace and source are the same, so don't double-mount
 /// - ro: if true, mount workspace path as read-only
-/// - resolved_profile: resolved mounts and env from profile resolution
+/// - resolved_profile: resolved mounts, env, and ports from profile resolution
 /// - cli_mounts: additional mounts from CLI arguments
+/// - cli_ports: additional port mappings from CLI arguments
 /// - command: command arguments to pass to the container entrypoint
 /// - should_skip: if true, skip mounts that are already covered by parent mounts
 pub fn build_container_config(
@@ -183,6 +186,7 @@ pub fn build_container_config(
     entrypoint_override: Option<&str>,
     resolved_profile: &ResolvedProfile,
     cli_mounts: &[Mount],
+    cli_ports: &[String],
     command: Option<Vec<String>>,
     should_skip: bool,
 ) -> Result<ContainerConfig> {
@@ -264,6 +268,12 @@ pub fn build_container_config(
     // Use env from resolved profile (includes runtime.env + profile envs)
     env.extend(resolved_profile.env.iter().cloned());
 
+    // Combine profile ports and CLI ports, deduplicate (first occurrence wins)
+    let mut all_ports: Vec<String> = resolved_profile.ports.clone();
+    all_ports.extend(cli_ports.iter().cloned());
+    let mut seen_ports = HashSet::new();
+    all_ports.retain(|p| seen_ports.insert(p.clone()));
+
     Ok(ContainerConfig {
         image: config.runtime.image.clone(),
         entrypoint,
@@ -272,6 +282,7 @@ pub fn build_container_config(
         working_dir: workspace_path_str,
         mounts: binds,
         env,
+        ports: all_ports,
     })
 }
 
