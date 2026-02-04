@@ -136,6 +136,24 @@ Both support explicit mappings where `~` expands to host home for source, contai
 home_relative = ["/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent"]
 ```
 
+**Glob expansion:**
+
+Mount paths support glob patterns (`*`, `?`, `[...]`). Each matching path is mounted individually with the same mode and path derivation rules:
+
+```toml
+[runtime.mounts.rw]
+# Mounts every /tmp/kitty-* directory that exists at spawn time
+absolute = ["/tmp/kitty-*"]
+
+# Each match under ~/.config/ is home-translated independently
+home_relative = ["~/.config/sock-*"]
+```
+
+- `home_relative` translation applies per expanded match
+- Globs are **not** supported with explicit `src:dst` mappings (ambiguous: N sources, 1 dest)
+- Zero matches are silently skipped, same as a non-existent literal path
+- When using `-m`/`-M` on the CLI, **quote the glob** so the shell doesn't expand it first: `-M '/tmp/kitty-*'`
+
 **Examples:**
 ```toml
 [runtime.mounts.ro]
@@ -557,6 +575,7 @@ Examples:
 -M /nix/store       # rw mount, same absolute path on both sides
 -M o:/tmp/cache     # overlay mount (Podman only)
 -m ~/src:/app       # explicit mapping: ~/src on host → /app in container
+-M '/tmp/kitty-*'   # glob: mounts every matching path (quote to prevent shell expansion)
 ```
 
 ## How It Works

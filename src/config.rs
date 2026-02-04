@@ -75,6 +75,11 @@ impl ResolvedMount {
     }
 }
 
+/// Returns true if the string contains any glob metacharacters (`*`, `?`, `[`).
+fn is_glob(s: &str) -> bool {
+    s.contains('*') || s.contains('?') || s.contains('[')
+}
+
 /// A unified mount specification with mode, path spec, and home-relative flag.
 ///
 /// Two mounts are considered equal if they resolve to the same bind string
@@ -220,12 +225,59 @@ impl Mount {
 
     /// Resolve with explicit home directories, returning all resolved mounts including symlink chain.
     /// If the host path doesn't exist, returns an empty Vec and logs a debug message.
+    /// If the host path contains glob characters (`*`, `?`, `[`), expands the glob and
+    /// resolves each match individually. Globs are not supported with explicit `src:dst` specs.
     pub fn to_resolved_mounts_with_homes(
         &self,
         host_home: &str,
         container_home: &str,
     ) -> Result<Vec<ResolvedMount>> {
         let (host_expanded, _) = self.resolve_paths(host_home, container_home)?;
+
+        // If the expanded host path contains glob characters, expand it
+        if is_glob(&host_expanded) {
+            if self.spec.contains(':') {
+                return Err(eyre::eyre!(
+                    "Glob patterns are not supported with explicit src:dst mounts: {}",
+                    self.spec
+                ));
+            }
+
+            let mut resolved_mounts = Vec::new();
+            let mut seen_paths = std::collections::HashSet::new();
+
+            let matches: Vec<PathBuf> = glob::glob(&host_expanded)
+                .wrap_err_with(|| format!("Invalid glob pattern: {}", host_expanded))?
+                .filter_map(|entry| entry.ok())
+                .collect();
+
+            if matches.is_empty() {
+                eprintln!(
+                    "DEBUG: Glob pattern matched no paths: {} (mode: {})",
+                    host_expanded, self.mode
+                );
+                return Ok(Vec::new());
+            }
+
+            eprintln!(
+                "DEBUG: Glob pattern '{}' matched {} path(s): {:?}",
+                host_expanded,
+                matches.len(),
+                matches
+            );
+
+            for matched_path in &matches {
+                self.collect_symlink_chain(
+                    matched_path,
+                    host_home,
+                    container_home,
+                    &mut resolved_mounts,
+                    &mut seen_paths,
+                )?;
+            }
+
+            return Ok(resolved_mounts);
+        }
 
         let host_path = PathBuf::from(&host_expanded);
         if !host_path.exists() {
@@ -2059,6 +2111,117 @@ mod tests {
 
         // Should return empty vec for non-existent paths
         assert_eq!(resolved_mounts.len(), 0);
+    }
+
+    #[test]
+    fn test_mount_glob_expands_multiple_matches() {
+        let temp_dir = std::env::temp_dir().join(format!("ab_glob_multi_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Create three matching directories: kitty-a, kitty-b, kitty-c
+        for name in &["kitty-a", "kitty-b", "kitty-c"] {
+            std::fs::create_dir_all(temp_dir.join(name)).unwrap();
+        }
+        // And one that should NOT match
+        std::fs::create_dir_all(temp_dir.join("other")).unwrap();
+
+        let glob_spec = format!("{}/kitty-*", temp_dir.display());
+        let mount = Mount {
+            spec: glob_spec,
+            home_relative: false,
+            mode: MountMode::Ro,
+        };
+
+        let resolved_mounts = mount.to_resolved_mounts().unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        // Should have exactly 3 mounts (one per matching dir), not "other"
+        assert_eq!(resolved_mounts.len(), 3);
+        let hosts: Vec<String> = resolved_mounts
+            .iter()
+            .map(|rm| rm.host.to_string_lossy().to_string())
+            .collect();
+        assert!(hosts.iter().any(|h| h.ends_with("kitty-a")));
+        assert!(hosts.iter().any(|h| h.ends_with("kitty-b")));
+        assert!(hosts.iter().any(|h| h.ends_with("kitty-c")));
+        assert!(!hosts.iter().any(|h| h.ends_with("other")));
+
+        // Container paths should mirror host paths (not home_relative)
+        for rm in &resolved_mounts {
+            assert_eq!(rm.host, rm.container);
+            assert_eq!(rm.mode, MountMode::Ro);
+        }
+    }
+
+    #[test]
+    fn test_mount_glob_no_matches_returns_empty() {
+        let mount = Mount {
+            spec: "/tmp/ab_glob_no_match_*/this_should_never_exist_*".to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        let resolved_mounts = mount.to_resolved_mounts().unwrap();
+        assert!(resolved_mounts.is_empty());
+    }
+
+    #[test]
+    fn test_mount_glob_with_explicit_dest_errors() {
+        let mount = Mount {
+            spec: "/tmp/kitty-*:/mnt/kitty".to_string(),
+            home_relative: false,
+            mode: MountMode::Rw,
+        };
+
+        let result = mount.to_resolved_mounts();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Glob patterns are not supported"),
+            "error should mention glob not supported with src:dst"
+        );
+    }
+
+    #[test]
+    fn test_mount_glob_home_relative() {
+        // Create temp dirs under a fake "home" and use to_resolved_mounts_with_homes
+        let fake_home = std::env::temp_dir().join(format!("ab_glob_home_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fake_home);
+
+        for name in &["sock-1", "sock-2"] {
+            std::fs::create_dir_all(fake_home.join(name)).unwrap();
+        }
+
+        let glob_spec = format!("{}/sock-*", fake_home.display());
+        let mount = Mount {
+            spec: glob_spec,
+            home_relative: true,
+            mode: MountMode::Rw,
+        };
+
+        let container_home = "/home/container_user";
+        let resolved_mounts = mount
+            .to_resolved_mounts_with_homes(&fake_home.to_string_lossy(), container_home)
+            .unwrap();
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&fake_home);
+
+        assert_eq!(resolved_mounts.len(), 2);
+        // Container paths should have the fake_home prefix replaced with container_home
+        for rm in &resolved_mounts {
+            let container_str = rm.container.to_string_lossy();
+            assert!(
+                container_str.starts_with(container_home),
+                "container path '{}' should start with '{}'",
+                container_str,
+                container_home
+            );
+        }
     }
 
     #[test]
