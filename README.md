@@ -24,6 +24,7 @@ Agent Box solves this by:
   - [Layered Configuration](#layered-configuration)
   - [Mount Path Syntax](#mount-path-syntax)
   - [Port Mappings](#port-mappings)
+  - [Host Entries](#host-entries)
   - [Runtime Backends](#runtime-backends)
   - [Profiles](#profiles)
   - [Validating Configuration](#validating-configuration)
@@ -58,6 +59,7 @@ image = "agent-box:latest"
 entrypoint = "/bin/bash"          # Shell-style command string (supports quotes for args with spaces)
 skip_mounts = ["/nix/store/*", "/nix/var/nix"]  # Glob patterns for paths to always skip
 ports = ["8080:8080"]                # Port mappings (Docker -p syntax)
+hosts = ["host.docker.internal:host-gateway"]  # Custom /etc/hosts entries
 
 [runtime.mounts.ro]
 absolute = ["/nix/store"]
@@ -313,6 +315,49 @@ ab spawn -s my-session -p dev -P 9000:9000
 
 Duplicate port specs (exact string match) are automatically deduplicated — if the same spec appears in multiple profiles or on the CLI, only the first occurrence is kept.
 
+### Host Entries
+
+Custom host-to-IP mappings are added to `/etc/hosts` inside the container via Docker/Podman's `--add-host` flag. They use the same layered configuration system as mounts, env, and ports.
+
+**Configuration:**
+
+```toml
+[runtime]
+hosts = ["host.docker.internal:host-gateway"]
+
+[profiles.dev]
+hosts = ["myservice:192.168.1.10", "db.local:10.0.0.5"]
+```
+
+**Format:**
+
+Each entry is `HOST:IP`:
+
+- `myhost:192.168.1.1` — resolve `myhost` to `192.168.1.1` inside the container
+- `host.docker.internal:host-gateway` — special `host-gateway` value resolves to the host machine's IP (supported by Docker 20.10+ and Podman)
+
+**CLI:**
+
+```bash
+# Add a single host entry
+ab spawn -s my-session -H myhost:192.168.1.1
+
+# Add multiple entries
+ab spawn -s my-session -H myhost:10.0.0.1 -H db.local:10.0.0.5
+
+# Combine with profiles
+ab spawn -s my-session -p dev -H extra.local:172.16.0.1
+```
+
+**Resolution order:**
+
+1. `runtime.hosts` (always applied first)
+2. `default_profile` hosts (if set)
+3. CLI profiles (`-p`) hosts in the order specified
+4. CLI hosts (`-H`) applied last
+
+Duplicate host entries (exact string match) are automatically deduplicated — if the same `HOST:IP` pair appears in multiple profiles or on the CLI, only the first occurrence is kept.
+
 ### Runtime Backends
 
 Agent Box supports two container runtimes:
@@ -362,7 +407,8 @@ home_relative = ["~/.cargo/registry"]
 
 [profiles.dev]
 extends = ["rust"]
-ports = ["8080:8080", "3000:3000"]  # Port mappings (inherited by children)
+ports = ["8080:8080", "3000:3000"]            # Port mappings (inherited by children)
+hosts = ["host.docker.internal:host-gateway"]  # Host entries (inherited by children)
 
 [profiles.gpg]
 [profiles.gpg.mounts.o]  # Overlay (Podman only)
@@ -386,8 +432,8 @@ ab spawn -s my-session -p git
 # Combine multiple profiles
 ab spawn -s my-session -p git -p rust -p gpg
 
-# Profiles + additional CLI mounts and ports
-ab spawn -s my-session -p rust -m ~/my-data -P 8080:8080
+# Profiles + additional CLI mounts, ports, and host entries
+ab spawn -s my-session -p rust -m ~/my-data -P 8080:8080 -H myhost:10.0.0.1
 ```
 
 **Profile inheritance with `extends`:**
@@ -416,7 +462,7 @@ Using `-p dev` results in env: `["A=1", "B=2", "C=3"]`
 3. CLI profiles (`-p`) in the order specified
 4. CLI mounts (`-m`, `-M`) applied last
 
-Arrays (mounts, env, ports) are concatenated. Duplicate mount paths and port specs (exact string match) are automatically deduplicated - if the same spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
+Arrays (mounts, env, ports, hosts) are concatenated. Duplicate mount paths, port specs, and host entries (exact string match) are automatically deduplicated - if the same spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
 
 **Profiles with layered configuration:**
 
@@ -491,7 +537,7 @@ Errors:
   ✗ Profile 'broken': extends unknown profile 'also_nonexistent'. Available profiles: ["base", "git"]
 
 Warnings:
-  ⚠ Profile 'empty': profile is empty (no mounts, env, ports, or extends)
+  ⚠ Profile 'empty': profile is empty (no mounts, env, ports, hosts, or extends)
 
 Configuration invalid: 2 error(s), 1 warning(s).
 ```
@@ -532,6 +578,9 @@ Resolved config:
   Ports:
     8080:8080
     3000:3000
+
+  Hosts:
+    host.docker.internal:host-gateway
 ```
 
 The output shows both the mount spec and the resolved bind string (`host:container:mode`).
@@ -607,8 +656,8 @@ ab spawn -s my-session -m /run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent
 # Expose ports
 ab spawn -s my-session -P 8080:8080 -P 3000
 
-# Combine profiles with additional mounts and ports
-ab spawn -s my-session -p rust -m ~/project-data -P 8080:8080
+# Combine profiles with additional mounts, ports, and host entries
+ab spawn -s my-session -p rust -m ~/project-data -P 8080:8080 -H myhost:10.0.0.1
 ```
 
 **Session vs Local mode:**

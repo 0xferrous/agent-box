@@ -53,6 +53,7 @@ pub struct ContainerConfig {
     pub mounts: Vec<String>,
     pub env: Vec<String>,
     pub ports: Vec<String>,
+    pub hosts: Vec<String>,
 }
 
 /// Enum of available container runtimes
@@ -172,9 +173,10 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
 /// - source_path: the source repo to mount .git/.jj from
 /// - local: if true, workspace and source are the same, so don't double-mount
 /// - ro: if true, mount workspace path as read-only
-/// - resolved_profile: resolved mounts, env, and ports from profile resolution
+/// - resolved_profile: resolved mounts, env, ports, and hosts from profile resolution
 /// - cli_mounts: additional mounts from CLI arguments
 /// - cli_ports: additional port mappings from CLI arguments
+/// - cli_hosts: additional host entries from CLI arguments
 /// - command: command arguments to pass to the container entrypoint
 /// - should_skip: if true, skip mounts that are already covered by parent mounts
 pub fn build_container_config(
@@ -187,6 +189,7 @@ pub fn build_container_config(
     resolved_profile: &ResolvedProfile,
     cli_mounts: &[Mount],
     cli_ports: &[String],
+    cli_hosts: &[String],
     command: Option<Vec<String>>,
     should_skip: bool,
 ) -> Result<ContainerConfig> {
@@ -274,6 +277,12 @@ pub fn build_container_config(
     let mut seen_ports = HashSet::new();
     all_ports.retain(|p| seen_ports.insert(p.clone()));
 
+    // Combine profile hosts and CLI hosts, deduplicate (first occurrence wins)
+    let mut all_hosts: Vec<String> = resolved_profile.hosts.clone();
+    all_hosts.extend(cli_hosts.iter().cloned());
+    let mut seen_hosts = HashSet::new();
+    all_hosts.retain(|h| seen_hosts.insert(h.clone()));
+
     Ok(ContainerConfig {
         image: config.runtime.image.clone(),
         entrypoint,
@@ -283,6 +292,7 @@ pub fn build_container_config(
         mounts: binds,
         env,
         ports: all_ports,
+        hosts: all_hosts,
     })
 }
 

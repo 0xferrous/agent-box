@@ -94,6 +94,11 @@ enum Commands {
         /// Example: -P 8080:8080 -P 3000 -P 127.0.0.1:9090:9090
         #[arg(long, short = 'P', value_name = "PORT")]
         port: Vec<String>,
+        /// Custom host-to-IP mapping added to /etc/hosts in the container (can be specified multiple times).
+        /// Format: HOST:IP  (use `host-gateway` as IP to resolve to the host machine).
+        /// Example: -H myhost:192.168.1.1 -H host.docker.internal:host-gateway
+        #[arg(long = "add-host", short = 'H', value_name = "HOST:IP")]
+        add_host: Vec<String>,
         /// Don't skip mounts that are already covered by parent mounts
         #[arg(long)]
         no_skip: bool,
@@ -205,6 +210,7 @@ fn run() -> eyre::Result<()> {
             mount_abs,
             profile,
             port,
+            add_host,
             no_skip,
         } => {
             let wtype = if git {
@@ -254,6 +260,7 @@ fn run() -> eyre::Result<()> {
                 &resolved_profile,
                 &cli_mounts,
                 &port,
+                &add_host,
                 command,
                 !no_skip,
             ) {
@@ -430,6 +437,16 @@ fn run() -> eyre::Result<()> {
                 } else {
                     for p in &resolved.ports {
                         println!("    {}", p);
+                    }
+                }
+
+                // Show hosts
+                println!("\n  Hosts:");
+                if resolved.hosts.is_empty() {
+                    println!("    (none)");
+                } else {
+                    for h in &resolved.hosts {
+                        println!("    {}", h);
                     }
                 }
             }

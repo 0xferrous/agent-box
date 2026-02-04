@@ -172,6 +172,7 @@ impl ContainerBackend for DockerRuntime {
         eprintln!("  Mounts: {} volumes", config.mounts.len());
         eprintln!("  Env vars: {} variables", config.env.len());
         eprintln!("  Ports: {} mappings", config.ports.len());
+        eprintln!("  Hosts: {} entries", config.hosts.len());
 
         let mut args = vec![
             "run".to_string(),
@@ -199,6 +200,12 @@ impl ContainerBackend for DockerRuntime {
         for port in &config.ports {
             args.push("-p".to_string());
             args.push(port.clone());
+        }
+
+        // Add custom host entries
+        for host in &config.hosts {
+            args.push("--add-host".to_string());
+            args.push(host.clone());
         }
 
         // Add entrypoint if specified
