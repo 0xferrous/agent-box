@@ -166,9 +166,10 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
 }
 
 /// Build container configuration from workspace and source paths
-/// - workspace_path: the directory to mount as working directory (rw)
+/// - workspace_path: the directory to mount as working directory
 /// - source_path: the source repo to mount .git/.jj from
 /// - local: if true, workspace and source are the same, so don't double-mount
+/// - ro: if true, mount workspace path as read-only
 /// - resolved_profile: resolved mounts and env from profile resolution
 /// - cli_mounts: additional mounts from CLI arguments
 /// - command: command arguments to pass to the container entrypoint
@@ -178,6 +179,7 @@ pub fn build_container_config(
     workspace_path: &Path,
     source_path: &Path,
     local: bool,
+    ro: bool,
     entrypoint_override: Option<&str>,
     resolved_profile: &ResolvedProfile,
     cli_mounts: &[Mount],
@@ -203,7 +205,8 @@ pub fn build_container_config(
 
     let workspace_path_str = pb_to_str(workspace_path);
 
-    let mut binds = vec![format_bind(workspace_path, workspace_path, MountMode::Rw)];
+    let workspace_mode = if ro { MountMode::Ro } else { MountMode::Rw };
+    let mut binds = vec![format_bind(workspace_path, workspace_path, workspace_mode)];
 
     // Mount source repo's .git and .jj directories only if not local
     // (in local mode, workspace IS the source, so they're already included)

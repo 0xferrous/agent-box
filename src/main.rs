@@ -71,6 +71,9 @@ enum Commands {
         /// Create workspace if it doesn't exist (equivalent to running `ab new` first)
         #[arg(long, short, conflicts_with = "local")]
         new: bool,
+        /// Mount source directory as read-only
+        #[arg(long)]
+        ro: bool,
         /// Additional mount (home-relative). Format: [MODE:]PATH or [MODE:]SRC:DST
         /// MODE is ro, rw, or o (default: rw). Paths use ~ for home directory.
         /// Example: -m ~/.config/git -m ro:~/secrets -m rw:~/data:/app/data
@@ -192,6 +195,7 @@ fn run() -> eyre::Result<()> {
             git,
             jj: _,
             new: create_new,
+            ro,
             mount,
             mount_abs,
             profile,
@@ -239,6 +243,7 @@ fn run() -> eyre::Result<()> {
                 &workspace_path,
                 &source_path,
                 local,
+                ro,
                 entrypoint.as_deref(),
                 &resolved_profile,
                 &cli_mounts,
