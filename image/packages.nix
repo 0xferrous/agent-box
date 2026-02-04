@@ -1,4 +1,4 @@
-{ pkgs, aiTools }:
+{ pkgs, aiTools, nix-index-database-pkgs }:
 
 with pkgs; [
   bash
@@ -22,7 +22,6 @@ with pkgs; [
   gnupg
   tokei
   file
-  comma
   dua
   yazi
   bat
@@ -39,4 +38,7 @@ with pkgs; [
   aiTools.pi
   aiTools.claude-code
   aiTools.tuicr
+
+  nix-index-database-pkgs.nix-index-with-db
+  nix-index-database-pkgs.comma-with-db
 ]

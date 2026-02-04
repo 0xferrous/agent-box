@@ -5,6 +5,7 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nix.url = "github:0xferrous/nix/extra-args";
     nix-ai-tools.url = "github:numtide/nix-ai-tools";
+    nix-index-database.url = "github:nix-community/nix-index-database";
   };
 
   outputs =
@@ -13,6 +14,7 @@
       nixpkgs,
       nix,
       nix-ai-tools,
+      nix-index-database,
     }:
     let
       systems = [
@@ -32,6 +34,7 @@
           uname = id.uname;
           gname = id.gname;
           aiTools = nix-ai-tools.packages.${system};
+          nix-index-database-pkgs = nix-index-database.packages.${system};
 
           userHome = if uid == 0 then "/root" else "/home/${uname}";
 
@@ -118,7 +121,7 @@
             };
 
           # Default package list
-          defaultPackages = import ./packages.nix { inherit pkgs aiTools; };
+          defaultPackages = import ./packages.nix { inherit pkgs aiTools nix-index-database-pkgs; };
         in
         {
           default = buildImage {
