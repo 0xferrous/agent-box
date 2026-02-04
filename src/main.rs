@@ -102,6 +102,10 @@ enum Commands {
         /// Don't skip mounts that are already covered by parent mounts
         #[arg(long)]
         no_skip: bool,
+        /// Network mode to use (e.g. host, bridge, none, or a container name).
+        /// Passed directly as --network=<MODE> to the container runtime.
+        #[arg(long, value_name = "MODE")]
+        network: Option<String>,
     },
     /// Debug commands (hidden from main help)
     #[command(hide = true)]
@@ -212,6 +216,7 @@ fn run() -> eyre::Result<()> {
             port,
             add_host,
             no_skip,
+            network,
         } => {
             let wtype = if git {
                 WorkspaceType::Git
@@ -263,6 +268,7 @@ fn run() -> eyre::Result<()> {
                 &add_host,
                 command,
                 !no_skip,
+                network,
             ) {
                 Ok(cfg) => cfg,
                 Err(e) => {

@@ -173,6 +173,7 @@ impl ContainerBackend for DockerRuntime {
         eprintln!("  Env vars: {} variables", config.env.len());
         eprintln!("  Ports: {} mappings", config.ports.len());
         eprintln!("  Hosts: {} entries", config.hosts.len());
+        eprintln!("  Network: {:?}", config.network);
 
         let mut args = vec![
             "run".to_string(),
@@ -183,6 +184,12 @@ impl ContainerBackend for DockerRuntime {
             "--workdir".to_string(),
             config.working_dir.clone(),
         ];
+
+        // Add network mode if specified
+        if let Some(ref network) = config.network {
+            args.push("--network".to_string());
+            args.push(network.clone());
+        }
 
         // Add mounts
         for mount in &config.mounts {

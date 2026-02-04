@@ -25,6 +25,7 @@ Agent Box solves this by:
   - [Mount Path Syntax](#mount-path-syntax)
   - [Port Mappings](#port-mappings)
   - [Host Entries](#host-entries)
+  - [Network Mode](#network-mode)
   - [Runtime Backends](#runtime-backends)
   - [Profiles](#profiles)
   - [Validating Configuration](#validating-configuration)
@@ -358,6 +359,32 @@ ab spawn -s my-session -p dev -H extra.local:172.16.0.1
 
 Duplicate host entries (exact string match) are automatically deduplicated — if the same `HOST:IP` pair appears in multiple profiles or on the CLI, only the first occurrence is kept.
 
+### Network Mode
+
+The container's network mode can be overridden at spawn time with `--network=<MODE>`.  The value is passed directly as `--network` to the underlying container runtime (Docker or Podman), so any mode they support is valid:
+
+| Mode | Description |
+|------|-------------|
+| `host` | Share the host's network namespace — no port mapping needed |
+| `bridge` | Default isolated bridge network (Docker's default) |
+| `none` | No networking at all |
+| `<name>` | Join a named Docker/Podman network |
+
+**CLI:**
+
+```bash
+# Host networking — container sees all host ports and interfaces directly
+ab spawn -s my-session --network=host
+
+# Explicitly use the default bridge network
+ab spawn -s my-session --network=bridge
+
+# No network access
+ab spawn -s my-session --network=none
+```
+
+> **Note:** `--network=host` and `-P` (port mappings) / `-H` (host entries) are mutually exclusive on Docker — Docker will return an error if both are supplied.  Agent Box does not enforce this itself; the error comes from the container runtime.
+
 ### Runtime Backends
 
 Agent Box supports two container runtimes:
@@ -656,8 +683,14 @@ ab spawn -s my-session -m /run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent
 # Expose ports
 ab spawn -s my-session -P 8080:8080 -P 3000
 
-# Combine profiles with additional mounts, ports, and host entries
-ab spawn -s my-session -p rust -m ~/project-data -P 8080:8080 -H myhost:10.0.0.1
+# Use host networking (share the host's network namespace)
+ab spawn -s my-session --network=host
+
+# Use a specific network mode (bridge, none, or a named network)
+ab spawn -s my-session --network=bridge
+
+# Combine profiles with additional mounts, ports, host entries, and network mode
+ab spawn -s my-session -p rust -m ~/project-data -P 8080:8080 -H myhost:10.0.0.1 --network=host
 ```
 
 **Session vs Local mode:**

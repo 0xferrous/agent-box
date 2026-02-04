@@ -54,6 +54,7 @@ pub struct ContainerConfig {
     pub env: Vec<String>,
     pub ports: Vec<String>,
     pub hosts: Vec<String>,
+    pub network: Option<String>,
 }
 
 /// Enum of available container runtimes
@@ -179,6 +180,7 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
 /// - cli_hosts: additional host entries from CLI arguments
 /// - command: command arguments to pass to the container entrypoint
 /// - should_skip: if true, skip mounts that are already covered by parent mounts
+/// - network: optional network mode (e.g. "host", "bridge", "none")
 pub fn build_container_config(
     config: &Config,
     workspace_path: &Path,
@@ -192,6 +194,7 @@ pub fn build_container_config(
     cli_hosts: &[String],
     command: Option<Vec<String>>,
     should_skip: bool,
+    network: Option<String>,
 ) -> Result<ContainerConfig> {
     let pb_to_str = |pb: &Path| {
         pb.canonicalize()
@@ -293,6 +296,7 @@ pub fn build_container_config(
         env,
         ports: all_ports,
         hosts: all_hosts,
+        network,
     })
 }
 
