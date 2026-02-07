@@ -469,6 +469,16 @@ fn run() -> eyre::Result<()> {
                         println!("    {}", h);
                     }
                 }
+
+                // Show context
+                println!("\n  Context:");
+                if resolved.context.is_empty() {
+                    println!("    (none)");
+                } else {
+                    for c in &resolved.context {
+                        println!("    {}", c);
+                    }
+                }
             }
             DbgCommands::CheckPath { image, path } => {
                 let runtime = create_runtime(&config);

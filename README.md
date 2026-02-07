@@ -23,6 +23,7 @@ Agent Box solves this by:
 - [Configuration](#configuration)
   - [Layered Configuration](#layered-configuration)
   - [Environment Variable Passthrough](#environment-variable-passthrough)
+  - [Context](#context)
   - [Mount Path Syntax](#mount-path-syntax)
   - [Port Mappings](#port-mappings)
   - [Host Entries](#host-entries)
@@ -54,6 +55,7 @@ Create `~/.agent-box.toml`:
 ```toml
 workspace_dir = "~/workspaces"    # Where git worktrees and jj workspaces are created
 base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/git repos)
+context = "Optional context string available at /tmp/context in containers"
 
 [runtime]
 backend = "docker"                # Container runtime: "docker" or "podman" (default: docker)
@@ -152,6 +154,113 @@ env_passthrough = ["SSH_AUTH_SOCK", "GPG_TTY"]
 ```
 
 Using `-p dev` would passthrough: `PATH`, `USER`, `SSH_AUTH_SOCK`, and `GPG_TTY`.
+
+### Context
+
+The `context` field allows you to provide textual context that is made available to containers at `/tmp/context`. This is useful for passing information to AI coding agents or other tools running inside containers.
+
+**How it works:**
+
+1. Define `context` as a string at the root level and/or in profiles
+2. When spawning a container, all context strings are collected in order:
+   - Root-level `context` (if set)
+   - Each applied profile's `context` (following profile resolution order)
+3. Context strings are joined with newlines (`\n`) and written to a temporary file
+4. The file is mounted read-only at `/tmp/context` inside the container
+
+**Configuration:**
+
+```toml
+# Root-level context - always included
+context = """
+This is a Rust project using workspace layout with multiple crates.
+- Always run `cargo fmt` before committing
+- Use `cargo clippy -- -D warnings` to check for issues
+- Tests must pass with `cargo test --all-features`
+- Follow the error handling patterns in src/error.rs
+- New features require documentation in README.md and doc comments
+"""
+
+[profiles.rust]
+context = """
+Rust development environment:
+- Use `nix develop` for consistent toolchain (rustc 1.75.0)
+- Run `just check` before pushing (runs fmt, clippy, test)
+- Prefer `eyre::Result` over `std::result::Result` for error handling
+- Use `tracing` for logging, not println!
+"""
+
+[profiles.web-api]
+extends = ["rust"]
+context = """
+Web API guidelines:
+- All endpoints must have OpenAPI documentation
+- Use the middleware stack defined in src/middleware.rs
+- Rate limiting is configured per-endpoint in config.toml
+- Authentication uses JWT tokens validated in auth middleware
+- Database migrations go in migrations/ and use sqlx
+"""
+```
+
+**Example usage:**
+
+```bash
+# Spawn with web-api profile
+ab spawn -s my-session -p web-api
+
+# Inside the container, /tmp/context contains all three context strings:
+# (root context about Rust project conventions)
+# (rust profile context about dev environment)  
+# (web-api profile context about API guidelines)
+```
+
+**Viewing context:**
+
+You can preview the resolved context before spawning:
+
+```bash
+ab dbg resolve -p dev
+```
+
+This will show the Context section with all merged context strings.
+
+**Real-world example:**
+
+For a project with specific architecture and conventions, you might define:
+
+```toml
+context = """
+This is a web service built with axum and sqlx. Architecture:
+- src/main.rs: Application entry point and server setup
+- src/routes/: HTTP route handlers (one file per resource)
+- src/models/: Database models using sqlx
+- src/services/: Business logic layer
+- migrations/: SQL migrations managed by sqlx
+
+Development workflow:
+1. Create feature branch from main
+2. Make changes and add tests
+3. Run `just check` (runs fmt, clippy, tests)
+4. Create PR and wait for CI
+
+Code standards:
+- All public functions need doc comments
+- Use Result<T, ApiError> for error handling
+- Database queries go in src/models/, not in handlers
+- Follow RESTful conventions for API design
+- Integration tests in tests/ should cover happy path and error cases
+"""
+```
+
+When an AI agent spawns with this context, it can read `/tmp/context` to understand the project structure, workflow, and standards, allowing it to make better decisions about code organization and testing.
+
+**Notes:**
+
+- Context strings are **not** environment variables - they're written to a file
+- If no context is defined (empty strings), no file is created and no mount is added
+- The context file is temporary and cleaned up after the container exits
+- Context is particularly useful for providing instructions or metadata to AI coding agents
+- Use multi-line strings (""") for readable formatting
 
 ### Mount Path Syntax
 
@@ -437,7 +546,7 @@ Agent Box supports two container runtimes:
 
 ### Profiles
 
-Profiles let you define named sets of mounts, environment variables, and passthrough variables that can be selectively applied when spawning containers. This enables modular, reusable configurations for different toolchains.
+Profiles let you define named sets of mounts, environment variables, context, and passthrough variables that can be selectively applied when spawning containers. This enables modular, reusable configurations for different toolchains.
 
 **Basic profile definition:**
 
@@ -447,20 +556,39 @@ default_profile = "base"
 
 [profiles.base]
 env = ["EDITOR=nvim"]
+context = """
+Base development practices:
+- Commit messages follow Conventional Commits (feat:, fix:, docs:, etc.)
+- Never commit directly to main - use feature branches
+- Keep commits focused and atomic
+"""
 
 [profiles.base.mounts.ro]
 absolute = ["/nix/store"]
 home_relative = ["~/.config/git"]
 
 [profiles.git]
-extends = ["base"]  # Inherits mounts and env from base
+extends = ["base"]  # Inherits mounts, env, and context from base
 env = ["GIT_AUTHOR_NAME=You"]
+context = """
+Git workflow:
+- Rebase instead of merge when updating branches
+- Squash fixup commits before PR
+- Sign commits with GPG when available
+"""
 
 [profiles.git.mounts.ro]
 home_relative = ["~/.gitconfig"]
 
 [profiles.rust]
 env = ["CARGO_HOME=/home/user/.cargo"]
+context = """
+Rust coding standards:
+- Run `cargo clippy` and fix all warnings
+- Use #[must_use] on functions that return Result
+- Prefer borrowing over cloning unless necessary
+- Document all public APIs with doc comments
+"""
 
 [profiles.rust.mounts.ro]
 home_relative = ["~/.cargo/config.toml"]
@@ -470,10 +598,23 @@ home_relative = ["~/.cargo/registry"]
 
 [profiles.dev]
 extends = ["rust"]
+context = """
+Local development:
+- Use `cargo watch -x check -x test` for fast feedback
+- Debug builds are in target/debug
+- Set RUST_LOG=debug for verbose logging
+"""
 ports = ["8080:8080", "3000:3000"]            # Port mappings (inherited by children)
 hosts = ["host.docker.internal:host-gateway"]  # Host entries (inherited by children)
 
 [profiles.gpg]
+context = """
+GPG signing:
+- GPG agent socket is forwarded from host
+- Use `git config commit.gpgsign true` to sign commits
+- Test with `echo test | gpg --clearsign`
+"""
+
 [profiles.gpg.mounts.o]  # Overlay (Podman only)
 home_relative = ["~/.gnupg"]
 
@@ -505,27 +646,47 @@ Profiles can inherit from other profiles using the `extends` field. Parent profi
 
 ```toml
 [profiles.base]
-env = ["A=1"]
+env = ["EDITOR=nvim"]
+context = """
+Code quality requirements:
+- All code must pass CI checks before merging
+- Use conventional commits for all changes
+"""
 
 [profiles.git]
 extends = ["base"]
-env = ["B=2"]
+env = ["GIT_PAGER=less -R"]
+context = """
+Git workflow:
+- Create feature branches from main
+- Keep commits focused and well-described
+- Rebase to keep history clean
+"""
 
 [profiles.dev]
 extends = ["git"]  # Inherits from git, which inherits from base
-env = ["C=3"]
+env = ["RUST_BACKTRACE=1"]
+context = """
+Development environment:
+- Use `cargo watch` for automatic recompilation
+- Run tests frequently with `cargo test`
+- Check performance with `cargo bench` when optimizing
+"""
 ```
 
-Using `-p dev` results in env: `["A=1", "B=2", "C=3"]`
+Using `-p dev` results in all three context strings being written to `/tmp/context`, providing the agent with:
+1. General code quality requirements (from base)
+2. Git workflow guidelines (from git)
+3. Development environment tips (from dev)
 
 **Resolution order:**
 
-1. `runtime.mounts` and `runtime.env` (always applied first)
+1. Root-level `context` and `runtime.mounts` and `runtime.env` (always applied first)
 2. `default_profile` (if set)
 3. CLI profiles (`-p`) in the order specified
 4. CLI mounts (`-m`, `-M`) applied last
 
-Arrays (mounts, env, ports, hosts) are concatenated. Duplicate mount paths, port specs, and host entries (exact string match) are automatically deduplicated - if the same spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
+Arrays (mounts, env, ports, hosts, context) are concatenated. Context strings from the root level and each profile are collected in order and written to `/tmp/context`. Duplicate mount paths, port specs, and host entries (exact string match) are automatically deduplicated - if the same spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
 
 **Profiles with layered configuration:**
 
@@ -533,8 +694,20 @@ Profiles work with [layered configuration](#layered-configuration). Repo-local p
 
 Global config (`~/.agent-box.toml`):
 ```toml
+context = """
+General development guidelines:
+- Write clear, self-documenting code
+- Add comments for complex logic
+- Keep functions small and focused
+"""
+
 [profiles.base]
 env = ["EDITOR=nvim"]
+context = """
+Environment setup:
+- Nix store is mounted read-only at /nix/store
+- Use `nix develop` for project-specific tools
+"""
 
 [profiles.base.mounts.ro]
 absolute = ["/nix/store"]
@@ -542,10 +715,25 @@ absolute = ["/nix/store"]
 [profiles.rust]
 extends = ["base"]
 env = ["CARGO_HOME=~/.cargo"]
+context = """
+Rust best practices:
+- Prefer iterators over loops
+- Use `?` operator for error propagation
+- Run clippy with `cargo clippy -- -D warnings`
+"""
 ```
 
 Repo-local config (`~/repos/myproject/.agent-box.toml`):
 ```toml
+context = """
+MyProject - Web service for task management:
+- Main entry point: src/main.rs
+- API handlers in src/handlers/
+- Database models in src/models/
+- Tests must cover all API endpoints
+- Use the test helpers in tests/common/mod.rs
+"""
+
 # Override default profile for this repo
 default_profile = "myproject-dev"
 
@@ -553,6 +741,13 @@ default_profile = "myproject-dev"
 [profiles.myproject-dev]
 extends = ["rust"]
 env = ["PROJECT=myproject"]
+context = """
+MyProject development:
+- Database schema in migrations/
+- Run `sqlx migrate run` to apply migrations
+- API docs generated with `cargo doc --open`
+- Use `.env.example` as template for local config
+"""
 
 [profiles.myproject-dev.mounts.rw]
 home_relative = ["~/.local/share/myproject"]
@@ -565,7 +760,8 @@ env = ["RUST_BACKTRACE=1"]  # Appended to global rust.env
 This allows:
 - Repo-local profiles extending global profiles
 - Overriding `default_profile` per-repo
-- Adding mounts/env to existing global profiles (arrays are concatenated)
+- Adding mounts/env/context to existing global profiles (arrays are concatenated)
+- Repo-local `context` overrides global `context` (scalar value)
 
 ### Validating Configuration
 
@@ -617,8 +813,8 @@ ab dbg resolve
 ab dbg resolve -p rust -p git
 ```
 
-This shows the final merged mounts and environment variables after:
-1. Starting with base `runtime.mounts` and `runtime.env`
+This shows the final merged mounts, environment variables, and context after:
+1. Starting with base `runtime.mounts`, `runtime.env`, and root-level `context`
 2. Applying `default_profile` (if set)
 3. Applying CLI-specified profiles in order
 
@@ -638,12 +834,31 @@ Resolved config:
   Environment:
     NIX_REMOTE=daemon
 
+  Environment Passthrough:
+    PATH = /usr/local/bin:/usr/bin:/bin
+    TERM = xterm-256color
+
   Ports:
     8080:8080
     3000:3000
 
   Hosts:
     host.docker.internal:host-gateway
+
+  Context:
+    General development guidelines:
+    - Write clear, self-documenting code
+    - Add comments for complex logic
+    - Keep functions small and focused
+    
+    Environment setup:
+    - Nix store is mounted read-only at /nix/store
+    - Use `nix develop` for project-specific tools
+    
+    Rust best practices:
+    - Prefer iterators over loops
+    - Use `?` operator for error propagation
+    - Run clippy with `cargo clippy -- -D warnings`
 ```
 
 The output shows both the mount spec and the resolved bind string (`host:container:mode`).

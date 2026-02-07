@@ -527,6 +527,9 @@ pub struct ProfileConfig {
     /// Custom host-to-IP mappings for `/etc/hosts` inside the container (`HOST:IP`)
     #[serde(default)]
     pub hosts: Vec<String>,
+    /// Context for this profile
+    #[serde(default)]
+    pub context: String,
 }
 
 /// Deserialize entrypoint from a shell-style string into Vec<String>
@@ -580,6 +583,9 @@ pub struct Config {
     pub profiles: HashMap<String, ProfileConfig>,
     #[serde(default)]
     pub runtime: RuntimeConfig,
+    /// Root-level context
+    #[serde(default)]
+    pub context: String,
 }
 
 /// Resolved mounts, env, ports, and hosts from profile resolution
@@ -590,6 +596,7 @@ pub struct ResolvedProfile {
     pub env_passthrough: Vec<String>,
     pub ports: Vec<String>,
     pub hosts: Vec<String>,
+    pub context: Vec<String>,
 }
 
 impl ResolvedProfile {
@@ -601,6 +608,7 @@ impl ResolvedProfile {
             .extend(other.env_passthrough.iter().cloned());
         self.ports.extend(other.ports.iter().cloned());
         self.hosts.extend(other.hosts.iter().cloned());
+        self.context.extend(other.context.iter().cloned());
     }
 
     /// Deduplicate mounts by resolved path (first occurrence wins).
@@ -687,6 +695,11 @@ pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<Res
         env_passthrough: config.runtime.env_passthrough.clone(),
         ports: config.runtime.ports.clone(),
         hosts: config.runtime.hosts.clone(),
+        context: if config.context.is_empty() {
+            vec![]
+        } else {
+            vec![config.context.clone()]
+        },
     };
 
     let profiles_to_apply = collect_profiles_to_apply(config, profile_names);
@@ -741,7 +754,7 @@ fn resolve_single_profile(
         resolved.merge(&parent_resolved);
     }
 
-    // Then apply this profile's own mounts, env, ports, and hosts
+    // Then apply this profile's own mounts, env, ports, hosts, and context
     resolved.mounts.extend(profile.mounts.to_mounts());
     resolved.env.extend(profile.env.iter().cloned());
     resolved
@@ -749,6 +762,9 @@ fn resolve_single_profile(
         .extend(profile.env_passthrough.iter().cloned());
     resolved.ports.extend(profile.ports.iter().cloned());
     resolved.hosts.extend(profile.hosts.iter().cloned());
+    if !profile.context.is_empty() {
+        resolved.context.push(profile.context.clone());
+    }
 
     // Remove from visited after processing (allow same profile in different branches)
     visited.remove(profile_name);
@@ -889,12 +905,13 @@ pub fn validate_config(config: &Config) -> ValidationResult {
             });
         }
 
-        // Warn about empty profiles (no mounts, no env, no env_passthrough, no ports, no hosts, no extends)
+        // Warn about empty profiles (no mounts, no env, no env_passthrough, no ports, no hosts, no context, no extends)
         if profile.extends.is_empty()
             && profile.env.is_empty()
             && profile.env_passthrough.is_empty()
             && profile.ports.is_empty()
             && profile.hosts.is_empty()
+            && profile.context.is_empty()
             && profile.mounts.ro.absolute.is_empty()
             && profile.mounts.ro.home_relative.is_empty()
             && profile.mounts.rw.absolute.is_empty()
@@ -905,7 +922,7 @@ pub fn validate_config(config: &Config) -> ValidationResult {
             warnings.push(ProfileValidationError {
                 profile_name: Some(profile_name.clone()),
                 message:
-                    "profile is empty (no mounts, env, env_passthrough, ports, hosts, or extends)"
+                    "profile is empty (no mounts, env, env_passthrough, ports, hosts, context, or extends)"
                         .to_string(),
             });
         }
@@ -1488,6 +1505,7 @@ mod tests {
                 hosts: vec![],
                 skip_mounts: vec![],
             },
+            context: String::new(),
         }
     }
 
@@ -1519,6 +1537,7 @@ mod tests {
                 ports: vec![],
                 env_passthrough: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1551,6 +1570,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1570,6 +1590,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1602,6 +1623,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1614,6 +1636,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1636,6 +1659,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1648,6 +1672,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1670,6 +1695,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1682,6 +1708,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1694,6 +1721,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1706,6 +1734,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1740,6 +1769,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1752,6 +1782,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1774,6 +1805,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1806,6 +1838,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1838,6 +1871,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1860,6 +1894,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1910,6 +1945,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1929,6 +1965,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1967,6 +2004,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -1985,6 +2023,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2003,6 +2042,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2015,6 +2055,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2057,6 +2098,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2076,6 +2118,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2116,6 +2159,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2134,6 +2178,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2593,6 +2638,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2625,6 +2671,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2647,6 +2694,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2673,6 +2721,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
         config.profiles.insert(
@@ -2684,6 +2733,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
         config.profiles.insert(
@@ -2695,6 +2745,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2716,6 +2767,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2725,7 +2777,7 @@ mod tests {
         assert!(
             result.warnings[0]
                 .message
-                .contains("no mounts, env, env_passthrough, ports, hosts, or extends")
+                .contains("no mounts, env, env_passthrough, ports, hosts, context, or extends")
         );
     }
 
@@ -2742,6 +2794,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
         config.profiles.insert(
@@ -2753,6 +2806,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2774,6 +2828,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
 
@@ -2814,6 +2869,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
         config.profiles.insert(
@@ -2825,6 +2881,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
         config.profiles.insert(
@@ -2836,6 +2893,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
         config.profiles.insert(
@@ -2847,11 +2905,136 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                context: String::new(),
             },
         );
         config.default_profile = Some("d".to_string());
 
         let result = validate_config(&config);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_profiles_context_merged() {
+        let mut config = make_test_config();
+        config.context = "root-context".to_string();
+
+        config.profiles.insert(
+            "base".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                context: "base-context".to_string(),
+            },
+        );
+
+        config.profiles.insert(
+            "extended".to_string(),
+            ProfileConfig {
+                extends: vec!["base".to_string()],
+                mounts: MountsConfig::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                context: "extended-context".to_string(),
+            },
+        );
+
+        let resolved = resolve_profiles(&config, &["extended".to_string()]).unwrap();
+
+        // Context should be: root + base + extended
+        assert_eq!(
+            resolved.context,
+            vec!["root-context", "base-context", "extended-context"]
+        );
+    }
+
+    #[test]
+    fn test_resolve_profiles_context_from_root_only() {
+        let mut config = make_test_config();
+        config.context = "root-context".to_string();
+
+        let resolved = resolve_profiles(&config, &[]).unwrap();
+
+        // Should have context from root config only
+        assert_eq!(resolved.context, vec!["root-context"]);
+    }
+
+    #[test]
+    fn test_resolve_profiles_context_from_profile_only() {
+        let mut config = make_test_config();
+
+        config.profiles.insert(
+            "with_context".to_string(),
+            ProfileConfig {
+                extends: vec![],
+                mounts: MountsConfig::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                context: "profile-context".to_string(),
+            },
+        );
+
+        let resolved = resolve_profiles(&config, &["with_context".to_string()]).unwrap();
+
+        // Should have context from profile only
+        assert_eq!(resolved.context, vec!["profile-context"]);
+    }
+
+    #[test]
+    fn test_context_parsing_from_toml() {
+        Jail::expect_with(|jail| {
+            jail.create_file(
+                "config.toml",
+                r#"
+                workspace_dir = "/workspaces"
+                base_repo_dir = "/repos"
+                context = "root-context"
+
+                [profiles.base]
+                context = "base-context"
+                env = ["BASE=1"]
+
+                [profiles.dev]
+                extends = ["base"]
+                context = "dev-context"
+                env = ["DEV=1"]
+
+                [runtime]
+                image = "test:latest"
+                "#,
+            )?;
+
+            let config_path = jail.directory().join("config.toml");
+            let figment = build_figment(&config_path, None);
+            let config: Config = figment.extract()?;
+
+            // Check root-level context
+            assert_eq!(config.context, "root-context");
+
+            // Check profile contexts
+            let base = config.profiles.get("base").unwrap();
+            assert_eq!(base.context, "base-context");
+
+            let dev = config.profiles.get("dev").unwrap();
+            assert_eq!(dev.extends, vec!["base"]);
+            assert_eq!(dev.context, "dev-context");
+
+            // Test resolution
+            let resolved = resolve_profiles(&config, &["dev".to_string()]).unwrap();
+            assert_eq!(
+                resolved.context,
+                vec!["root-context", "base-context", "dev-context"]
+            );
+
+            Ok(())
+        });
     }
 }

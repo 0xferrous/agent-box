@@ -298,6 +298,32 @@ pub fn build_container_config(
     let mut seen_hosts = HashSet::new();
     all_hosts.retain(|h| seen_hosts.insert(h.clone()));
 
+    // Create context file if context is not empty
+    if !resolved_profile.context.is_empty() {
+        use std::io::Write;
+
+        // Create a temporary file with a unique name
+        let context_content = resolved_profile.context.join("\n");
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let pid = std::process::id();
+        let context_file_path = format!("/tmp/agent-box-context-{}-{}", timestamp, pid);
+
+        // Write context to file
+        let mut file = std::fs::File::create(&context_file_path)
+            .map_err(|e| eyre::eyre!("Failed to create context file: {}", e))?;
+        file.write_all(context_content.as_bytes())
+            .map_err(|e| eyre::eyre!("Failed to write context file: {}", e))?;
+
+        eprintln!("DEBUG: Created context file at {}", context_file_path);
+        eprintln!("DEBUG: Context content:\n{}", context_content);
+
+        // Add mount for context file (read-only)
+        binds.push(format!("{}:/tmp/context:ro", context_file_path));
+    }
+
     Ok(ContainerConfig {
         image: config.runtime.image.clone(),
         entrypoint,
@@ -1207,5 +1233,169 @@ mod tests {
         );
         assert_eq!(parse_mode_prefix("~/data"), None);
         assert_eq!(parse_mode_prefix("/nix/store"), None);
+    }
+
+    #[test]
+    fn test_context_file_created_and_mounted() {
+        use crate::config::{Config, ResolvedProfile, RuntimeConfig};
+        use std::collections::HashMap;
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Create a test workspace directory
+        let temp_dir = std::env::temp_dir().join(format!("ab_context_{}", std::process::id()));
+        let workspace_path = temp_dir.join("workspace");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&workspace_path).unwrap();
+
+        let config = Config {
+            workspace_dir: PathBuf::from("/workspaces"),
+            base_repo_dir: PathBuf::from("/repos"),
+            default_profile: None,
+            profiles: HashMap::new(),
+            runtime: RuntimeConfig {
+                backend: "docker".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                skip_mounts: vec![],
+            },
+            context: String::new(),
+        };
+
+        let resolved_profile = ResolvedProfile {
+            mounts: vec![],
+            env: vec![],
+            env_passthrough: vec![],
+            ports: vec![],
+            hosts: vec![],
+            context: vec![
+                "context-line-1".to_string(),
+                "context-line-2".to_string(),
+                "context-line-3".to_string(),
+            ],
+        };
+
+        let container_config = build_container_config(
+            &config,
+            &workspace_path,
+            &workspace_path,
+            true,
+            false,
+            None,
+            &resolved_profile,
+            &[],
+            &[],
+            &[],
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        // Find the context mount
+        let context_mount = container_config
+            .mounts
+            .iter()
+            .find(|m| m.ends_with(":/tmp/context:ro"))
+            .expect("Context mount not found");
+
+        // Extract the host path from the mount string (format: host:container:mode)
+        let parts: Vec<&str> = context_mount.split(':').collect();
+        assert_eq!(parts.len(), 3, "Mount should have 3 parts");
+        let host_path = parts[0];
+        assert_eq!(parts[1], "/tmp/context");
+        assert_eq!(parts[2], "ro");
+
+        // Verify the context file exists and has correct content
+        assert!(
+            PathBuf::from(host_path).exists(),
+            "Context file should exist at {}",
+            host_path
+        );
+
+        let content = fs::read_to_string(host_path).unwrap();
+        assert_eq!(content, "context-line-1\ncontext-line-2\ncontext-line-3");
+
+        // Clean up
+        let _ = fs::remove_file(host_path);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_no_context_file_when_empty() {
+        use crate::config::{Config, ResolvedProfile, RuntimeConfig};
+        use std::collections::HashMap;
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Create a test workspace directory
+        let temp_dir = std::env::temp_dir().join(format!("ab_no_context_{}", std::process::id()));
+        let workspace_path = temp_dir.join("workspace");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&workspace_path).unwrap();
+
+        let config = Config {
+            workspace_dir: PathBuf::from("/workspaces"),
+            base_repo_dir: PathBuf::from("/repos"),
+            default_profile: None,
+            profiles: HashMap::new(),
+            runtime: RuntimeConfig {
+                backend: "docker".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                skip_mounts: vec![],
+            },
+            context: String::new(),
+        };
+
+        let resolved_profile = ResolvedProfile {
+            mounts: vec![],
+            env: vec![],
+            env_passthrough: vec![],
+            ports: vec![],
+            hosts: vec![],
+            context: vec![], // Empty context
+        };
+
+        let container_config = build_container_config(
+            &config,
+            &workspace_path,
+            &workspace_path,
+            true,
+            false,
+            None,
+            &resolved_profile,
+            &[],
+            &[],
+            &[],
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        // Verify no context mount exists
+        let context_mount = container_config
+            .mounts
+            .iter()
+            .find(|m| m.contains("/tmp/context"));
+
+        assert!(
+            context_mount.is_none(),
+            "Should not have context mount when context is empty"
+        );
+
+        // Clean up
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

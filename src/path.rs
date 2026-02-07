@@ -330,6 +330,7 @@ mod tests {
                 ports: Default::default(),
                 hosts: Default::default(),
             },
+            context: String::new(),
         }
     }
 
@@ -390,6 +391,7 @@ mod tests {
                 ports: Default::default(),
                 hosts: Default::default(),
             },
+            context: String::new(),
         };
 
         // Test exact match
@@ -429,6 +431,7 @@ mod tests {
                 ports: Default::default(),
                 hosts: Default::default(),
             },
+            context: String::new(),
         };
 
         // Test partial match (searching for "agent-box" should match "fr/agent-box")
@@ -468,6 +471,7 @@ mod tests {
                 ports: Default::default(),
                 hosts: Default::default(),
             },
+            context: String::new(),
         };
 
         // Test no match
