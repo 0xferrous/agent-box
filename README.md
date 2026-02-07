@@ -22,6 +22,7 @@ Agent Box solves this by:
 - [Installation](#installation)
 - [Configuration](#configuration)
   - [Layered Configuration](#layered-configuration)
+  - [Environment Variable Passthrough](#environment-variable-passthrough)
   - [Mount Path Syntax](#mount-path-syntax)
   - [Port Mappings](#port-mappings)
   - [Host Entries](#host-entries)
@@ -59,6 +60,7 @@ backend = "docker"                # Container runtime: "docker" or "podman" (def
 image = "agent-box:latest"
 entrypoint = "/bin/bash"          # Shell-style command string (supports quotes for args with spaces)
 skip_mounts = ["/nix/store/*", "/nix/var/nix"]  # Glob patterns for paths to always skip
+env_passthrough = ["PATH", "TERM"]   # Environment variables to pass through from host
 ports = ["8080:8080"]                # Port mappings (Docker -p syntax)
 hosts = ["host.docker.internal:host-gateway"]  # Custom /etc/hosts entries
 
@@ -116,6 +118,40 @@ env = ["PROJECT=myproject"]       # appended: ["EDITOR=nvim", "PROJECT=myproject
 [runtime.mounts.ro]
 home_relative = ["~/.ssh"]        # appended to global mounts
 ```
+
+### Environment Variable Passthrough
+
+`env_passthrough` allows you to pass environment variables from the host to the container. Instead of hard-coding values like `env = ["PATH=/usr/bin"]`, you can specify variable names to be read from the host environment:
+
+```toml
+[runtime]
+env_passthrough = ["PATH", "SSH_AUTH_SOCK", "TERM"]
+```
+
+When spawning a container, Agent Box will:
+1. Read each variable's value from the host environment
+2. Pass it to the container as `VAR_NAME=value`
+3. Warn if a variable is not set in the host environment (but continue)
+
+This is useful for:
+- Passing dynamic values (like `SSH_AUTH_SOCK` or `GPG_AGENT_INFO`)
+- Sharing the host's `PATH` without hard-coding
+- Terminal settings (`TERM`, `COLORTERM`)
+
+**Layering:** Like `env`, `env_passthrough` arrays are concatenated across global config, repo-local config, and profiles.
+
+**Example:**
+```toml
+# Global config
+[runtime]
+env_passthrough = ["PATH", "USER"]
+
+# Profile
+[profiles.dev]
+env_passthrough = ["SSH_AUTH_SOCK", "GPG_TTY"]
+```
+
+Using `-p dev` would passthrough: `PATH`, `USER`, `SSH_AUTH_SOCK`, and `GPG_TTY`.
 
 ### Mount Path Syntax
 
@@ -401,7 +437,7 @@ Agent Box supports two container runtimes:
 
 ### Profiles
 
-Profiles let you define named sets of mounts and environment variables that can be selectively applied when spawning containers. This enables modular, reusable configurations for different toolchains.
+Profiles let you define named sets of mounts, environment variables, and passthrough variables that can be selectively applied when spawning containers. This enables modular, reusable configurations for different toolchains.
 
 **Basic profile definition:**
 

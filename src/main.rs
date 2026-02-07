@@ -436,6 +436,20 @@ fn run() -> eyre::Result<()> {
                     }
                 }
 
+                // Show env_passthrough
+                println!("\n  Environment Passthrough:");
+                if resolved.env_passthrough.is_empty() {
+                    println!("    (none)");
+                } else {
+                    for var_name in &resolved.env_passthrough {
+                        // Show what value it would have if it were to be passed through
+                        match std::env::var(var_name) {
+                            Ok(value) => println!("    {} = {}", var_name, value),
+                            Err(_) => println!("    {} = (not set in host)", var_name),
+                        }
+                    }
+                }
+
                 // Show ports
                 println!("\n  Ports:");
                 if resolved.ports.is_empty() {

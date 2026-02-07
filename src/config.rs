@@ -518,6 +518,9 @@ pub struct ProfileConfig {
     /// Environment variables defined by this profile
     #[serde(default)]
     pub env: Vec<String>,
+    /// Environment variable names to pass through from host to container
+    #[serde(default)]
+    pub env_passthrough: Vec<String>,
     /// Port mappings defined by this profile (Docker `-p` syntax)
     #[serde(default)]
     pub ports: Vec<String>,
@@ -552,6 +555,9 @@ pub struct RuntimeConfig {
     pub mounts: MountsConfig,
     #[serde(default)]
     pub env: Vec<String>,
+    /// Environment variable names to pass through from host to container
+    #[serde(default)]
+    pub env_passthrough: Vec<String>,
     /// Port mappings to expose (Docker `-p` syntax: `[HOST_IP:]HOST_PORT:CONTAINER_PORT`)
     #[serde(default)]
     pub ports: Vec<String>,
@@ -581,6 +587,7 @@ pub struct Config {
 pub struct ResolvedProfile {
     pub mounts: Vec<Mount>,
     pub env: Vec<String>,
+    pub env_passthrough: Vec<String>,
     pub ports: Vec<String>,
     pub hosts: Vec<String>,
 }
@@ -590,6 +597,8 @@ impl ResolvedProfile {
     pub fn merge(&mut self, other: &ResolvedProfile) {
         self.mounts.extend(other.mounts.iter().cloned());
         self.env.extend(other.env.iter().cloned());
+        self.env_passthrough
+            .extend(other.env_passthrough.iter().cloned());
         self.ports.extend(other.ports.iter().cloned());
         self.hosts.extend(other.hosts.iter().cloned());
     }
@@ -675,6 +684,7 @@ pub fn resolve_profiles(config: &Config, profile_names: &[String]) -> Result<Res
     let mut resolved = ResolvedProfile {
         mounts: config.runtime.mounts.to_mounts(),
         env: config.runtime.env.clone(),
+        env_passthrough: config.runtime.env_passthrough.clone(),
         ports: config.runtime.ports.clone(),
         hosts: config.runtime.hosts.clone(),
     };
@@ -734,6 +744,9 @@ fn resolve_single_profile(
     // Then apply this profile's own mounts, env, ports, and hosts
     resolved.mounts.extend(profile.mounts.to_mounts());
     resolved.env.extend(profile.env.iter().cloned());
+    resolved
+        .env_passthrough
+        .extend(profile.env_passthrough.iter().cloned());
     resolved.ports.extend(profile.ports.iter().cloned());
     resolved.hosts.extend(profile.hosts.iter().cloned());
 
@@ -876,9 +889,10 @@ pub fn validate_config(config: &Config) -> ValidationResult {
             });
         }
 
-        // Warn about empty profiles (no mounts, no env, no ports, no hosts, no extends)
+        // Warn about empty profiles (no mounts, no env, no env_passthrough, no ports, no hosts, no extends)
         if profile.extends.is_empty()
             && profile.env.is_empty()
+            && profile.env_passthrough.is_empty()
             && profile.ports.is_empty()
             && profile.hosts.is_empty()
             && profile.mounts.ro.absolute.is_empty()
@@ -890,7 +904,9 @@ pub fn validate_config(config: &Config) -> ValidationResult {
         {
             warnings.push(ProfileValidationError {
                 profile_name: Some(profile_name.clone()),
-                message: "profile is empty (no mounts, env, ports, hosts, or extends)".to_string(),
+                message:
+                    "profile is empty (no mounts, env, env_passthrough, ports, hosts, or extends)"
+                        .to_string(),
             });
         }
     }
@@ -1467,6 +1483,7 @@ mod tests {
                 entrypoint: None,
                 mounts: MountsConfig::default(),
                 env: vec!["BASE=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
                 skip_mounts: vec![],
@@ -1500,6 +1517,7 @@ mod tests {
                 },
                 env: vec!["GIT=1".to_string()],
                 ports: vec![],
+                env_passthrough: vec![],
                 hosts: vec![],
             },
         );
@@ -1530,6 +1548,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec!["PROFILE_BASE=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1548,6 +1567,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec!["GIT=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1579,6 +1599,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["DEFAULT=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1590,6 +1611,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["EXTRA=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1611,6 +1633,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["GIT=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1622,6 +1645,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["RUST=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1643,6 +1667,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["BASE_PROFILE=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1654,6 +1679,7 @@ mod tests {
                 extends: vec!["base".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["GIT=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1665,6 +1691,7 @@ mod tests {
                 extends: vec!["base".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["JJ=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1676,6 +1703,7 @@ mod tests {
                 extends: vec!["git".to_string(), "jj".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["DEV=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1709,6 +1737,7 @@ mod tests {
                 extends: vec!["b".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1720,6 +1749,7 @@ mod tests {
                 extends: vec!["a".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1741,6 +1771,7 @@ mod tests {
                 extends: vec!["self".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1772,6 +1803,7 @@ mod tests {
                 extends: vec!["nonexistent".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1803,6 +1835,7 @@ mod tests {
                     o: MountPaths::default(),
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1824,6 +1857,7 @@ mod tests {
                     },
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1873,6 +1907,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1891,6 +1926,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1928,6 +1964,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1945,6 +1982,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1962,6 +2000,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -1973,6 +2012,7 @@ mod tests {
                 extends: vec!["git".to_string(), "jj".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2014,6 +2054,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2032,6 +2073,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2071,6 +2113,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2088,6 +2131,7 @@ mod tests {
                     ..Default::default()
                 },
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2546,6 +2590,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["A=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2577,6 +2622,7 @@ mod tests {
                 extends: vec!["nonexistent".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2598,6 +2644,7 @@ mod tests {
                 extends: vec!["self_ref".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2623,6 +2670,7 @@ mod tests {
                 extends: vec!["b".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2633,6 +2681,7 @@ mod tests {
                 extends: vec!["c".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2643,6 +2692,7 @@ mod tests {
                 extends: vec!["a".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2663,6 +2713,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2674,7 +2725,7 @@ mod tests {
         assert!(
             result.warnings[0]
                 .message
-                .contains("no mounts, env, ports, hosts, or extends")
+                .contains("no mounts, env, env_passthrough, ports, hosts, or extends")
         );
     }
 
@@ -2688,6 +2739,7 @@ mod tests {
                 extends: vec!["also_nonexistent".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2698,6 +2750,7 @@ mod tests {
                 extends: vec!["broken2".to_string()], // self-reference
                 mounts: MountsConfig::default(),
                 env: vec![],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2718,6 +2771,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["A=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2757,6 +2811,7 @@ mod tests {
                 extends: vec![],
                 mounts: MountsConfig::default(),
                 env: vec!["A=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2767,6 +2822,7 @@ mod tests {
                 extends: vec!["a".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["B=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2777,6 +2833,7 @@ mod tests {
                 extends: vec!["b".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["C=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },
@@ -2787,6 +2844,7 @@ mod tests {
                 extends: vec!["c".to_string()],
                 mounts: MountsConfig::default(),
                 env: vec!["D=1".to_string()],
+                env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
             },

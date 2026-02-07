@@ -274,6 +274,18 @@ pub fn build_container_config(
     // Use env from resolved profile (includes runtime.env + profile envs)
     env.extend(resolved_profile.env.iter().cloned());
 
+    // Pass through specified environment variables from host
+    for var_name in &resolved_profile.env_passthrough {
+        if let Ok(value) = std::env::var(var_name) {
+            env.push(format!("{}={}", var_name, value));
+        } else {
+            eprintln!(
+                "WARNING: env_passthrough variable '{}' not found in host environment",
+                var_name
+            );
+        }
+    }
+
     // Combine profile ports and CLI ports, deduplicate (first occurrence wins)
     let mut all_ports: Vec<String> = resolved_profile.ports.clone();
     all_ports.extend(cli_ports.iter().cloned());
