@@ -17,6 +17,23 @@ cd image
 ./image.nu
 ```
 
+## Publish to GHCR
+
+Use the Nushell helper to build and push the image. It will use `GITHUB_REPOSITORY`, `GITHUB_ACTOR`, and `GITHUB_TOKEN` when available (handy in GitHub Actions):
+
+```bash
+cd image
+./image.nu build-and-push
+```
+
+Override the target repository/tag or credentials if needed:
+
+```bash
+cd image
+./image.nu build-and-push --repository ghcr.io/owner/agent-box --tag latest
+./image.nu build-and-push --username my-user --token my-token
+```
+
 ## Entrypoint Behavior
 
 The image uses an entrypoint that wraps commands with `nix develop` when a `flake.nix` is present:
