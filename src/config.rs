@@ -543,7 +543,7 @@ where
 }
 
 fn default_backend() -> String {
-    "docker".to_string()
+    "podman".to_string()
 }
 
 #[derive(Debug, Deserialize, Default, Clone, PartialEq)]
@@ -1391,8 +1391,8 @@ mod tests {
             let figment = build_figment(&global_path, None);
             let config: Config = figment.extract()?;
 
-            // Backend should default to "docker"
-            assert_eq!(config.runtime.backend, "docker");
+            // Backend should default to "podman"
+            assert_eq!(config.runtime.backend, "podman");
 
             Ok(())
         });

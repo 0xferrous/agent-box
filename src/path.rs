@@ -320,7 +320,7 @@ mod tests {
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
-                backend: "docker".to_string(),
+                backend: "podman".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
@@ -381,7 +381,7 @@ mod tests {
             default_profile: None,
             profiles: std::collections::HashMap::new(),
             runtime: RuntimeConfig {
-                backend: "docker".to_string(),
+                backend: "podman".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
@@ -421,7 +421,7 @@ mod tests {
             default_profile: None,
             profiles: std::collections::HashMap::new(),
             runtime: RuntimeConfig {
-                backend: "docker".to_string(),
+                backend: "podman".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
@@ -461,7 +461,7 @@ mod tests {
             default_profile: None,
             profiles: std::collections::HashMap::new(),
             runtime: RuntimeConfig {
-                backend: "docker".to_string(),
+                backend: "podman".to_string(),
                 image: "test:latest".to_string(),
                 entrypoint: None,
                 mounts: Default::default(),
