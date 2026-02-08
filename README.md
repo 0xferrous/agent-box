@@ -55,7 +55,8 @@ Create `~/.agent-box.toml`:
 ```toml
 workspace_dir = "~/workspaces"    # Where git worktrees and jj workspaces are created
 base_repo_dir = "~/repos"         # Base directory for your repos (colocated jj/git repos)
-context = "Optional context string available at /tmp/context in containers"
+context = "Optional context string available in containers"
+context_path = "/tmp/context"     # Where context is mounted (default: /tmp/context; try: ~/.pi/agent/APPEND_SYSTEM.md for pi)
 
 [runtime]
 backend = "docker"                # Container runtime: "docker" or "podman" (default: docker)
@@ -157,7 +158,7 @@ Using `-p dev` would passthrough: `PATH`, `USER`, `SSH_AUTH_SOCK`, and `GPG_TTY`
 
 ### Context
 
-The `context` field allows you to provide textual context that is made available to containers at `/tmp/context`. This is useful for passing information to AI coding agents or other tools running inside containers.
+The `context` field allows you to provide textual context that is made available to containers. This is useful for passing information to AI coding agents or other tools running inside containers.
 
 **How it works:**
 
@@ -166,9 +167,21 @@ The `context` field allows you to provide textual context that is made available
    - Root-level `context` (if set)
    - Each applied profile's `context` (following profile resolution order)
 3. Context strings are joined with newlines (`\n`) and written to a temporary file
-4. The file is mounted read-only at `/tmp/context` inside the container
+4. The file is mounted read-write inside the container (default: `/tmp/context`)
 
 **Configuration:**
+
+```toml
+# Optional: customize the mount path (defaults to /tmp/context)
+# Example: mount as pi's APPEND_SYSTEM.md so context is automatically included
+context_path = "~/.pi/agent/APPEND_SYSTEM.md"
+
+# Or use a custom path
+context_path = "~/.context"
+
+# Absolute paths also work
+context_path = "/tmp/context"
+```
 
 ```toml
 # Root-level context - always included
@@ -208,7 +221,7 @@ Web API guidelines:
 # Spawn with web-api profile
 ab spawn -s my-session -p web-api
 
-# Inside the container, /tmp/context contains all three context strings:
+# Inside the container, the context file (default: /tmp/context) contains all three context strings:
 # (root context about Rust project conventions)
 # (rust profile context about dev environment)  
 # (web-api profile context about API guidelines)
@@ -252,13 +265,15 @@ Code standards:
 """
 ```
 
-When an AI agent spawns with this context, it can read `/tmp/context` to understand the project structure, workflow, and standards, allowing it to make better decisions about code organization and testing.
+When an AI agent spawns with this context, it can read the context file (default: `/tmp/context`) to understand the project structure, workflow, and standards, allowing it to make better decisions about code organization and testing.
 
 **Notes:**
 
 - Context strings are **not** environment variables - they're written to a file
 - If no context is defined (empty strings), no file is created and no mount is added
 - The context file is temporary and cleaned up after the container exits
+
+**Tip for pi users:** Set `context_path = "~/.pi/agent/APPEND_SYSTEM.md"` to automatically provide context to pi without needing to pass it via CLI. Pi will automatically read and include this file in its system instructions.
 - Context is particularly useful for providing instructions or metadata to AI coding agents
 - Use multi-line strings (""") for readable formatting
 
@@ -674,7 +689,7 @@ Development environment:
 """
 ```
 
-Using `-p dev` results in all three context strings being written to `/tmp/context`, providing the agent with:
+Using `-p dev` results in all three context strings being written to the context file (default: `/tmp/context`), providing the agent with:
 1. General code quality requirements (from base)
 2. Git workflow guidelines (from git)
 3. Development environment tips (from dev)
@@ -686,7 +701,7 @@ Using `-p dev` results in all three context strings being written to `/tmp/conte
 3. CLI profiles (`-p`) in the order specified
 4. CLI mounts (`-m`, `-M`) applied last
 
-Arrays (mounts, env, ports, hosts, context) are concatenated. Context strings from the root level and each profile are collected in order and written to `/tmp/context`. Duplicate mount paths, port specs, and host entries (exact string match) are automatically deduplicated - if the same spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
+Arrays (mounts, env, ports, hosts, context) are concatenated. Context strings from the root level and each profile are collected in order and written to the context file (configured via `context_path`, default: `/tmp/context`). Duplicate mount paths, port specs, and host entries (exact string match) are automatically deduplicated - if the same spec appears in multiple profiles, only the first occurrence is kept. Circular dependencies are detected and reported as errors.
 
 **Profiles with layered configuration:**
 

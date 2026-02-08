@@ -331,6 +331,7 @@ mod tests {
                 hosts: Default::default(),
             },
             context: String::new(),
+            context_path: "/tmp/context".to_string(),
         }
     }
 
@@ -392,6 +393,7 @@ mod tests {
                 hosts: Default::default(),
             },
             context: String::new(),
+            context_path: "/tmp/context".to_string(),
         };
 
         // Test exact match
@@ -432,6 +434,7 @@ mod tests {
                 hosts: Default::default(),
             },
             context: String::new(),
+            context_path: "/tmp/context".to_string(),
         };
 
         // Test partial match (searching for "agent-box" should match "fr/agent-box")
@@ -472,6 +475,7 @@ mod tests {
                 hosts: Default::default(),
             },
             context: String::new(),
+            context_path: "/tmp/context".to_string(),
         };
 
         // Test no match

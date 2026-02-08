@@ -546,6 +546,10 @@ fn default_backend() -> String {
     "podman".to_string()
 }
 
+fn default_context_path() -> String {
+    "/tmp/context".to_string()
+}
+
 #[derive(Debug, Deserialize, Default, Clone, PartialEq)]
 pub struct RuntimeConfig {
     #[serde(default = "default_backend")]
@@ -586,6 +590,9 @@ pub struct Config {
     /// Root-level context
     #[serde(default)]
     pub context: String,
+    /// Path where context file will be mounted inside the container
+    #[serde(default = "default_context_path")]
+    pub context_path: String,
 }
 
 /// Resolved mounts, env, ports, and hosts from profile resolution
@@ -1506,6 +1513,7 @@ mod tests {
                 skip_mounts: vec![],
             },
             context: String::new(),
+            context_path: "/tmp/context".to_string(),
         }
     }
 

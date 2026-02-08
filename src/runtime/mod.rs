@@ -320,8 +320,21 @@ pub fn build_container_config(
         eprintln!("DEBUG: Created context file at {}", context_file_path);
         eprintln!("DEBUG: Context content:\n{}", context_content);
 
+        // Expand ~ in context_path to container home directory
+        let container_home = format!("/home/{}", username);
+        let container_context_path = if config.context_path.starts_with("~/") {
+            config.context_path.replacen("~", &container_home, 1)
+        } else if config.context_path == "~" {
+            container_home
+        } else {
+            config.context_path.clone()
+        };
+
         // Add mount for context file (read-write so user can edit)
-        binds.push(format!("{}:/tmp/context:rw", context_file_path));
+        binds.push(format!(
+            "{}:{}:rw",
+            context_file_path, container_context_path
+        ));
     }
 
     Ok(ContainerConfig {
@@ -1265,6 +1278,7 @@ mod tests {
                 skip_mounts: vec![],
             },
             context: String::new(),
+            context_path: "/tmp/context".to_string(),
         };
 
         let resolved_profile = ResolvedProfile {
@@ -1356,6 +1370,7 @@ mod tests {
                 skip_mounts: vec![],
             },
             context: String::new(),
+            context_path: "/tmp/context".to_string(),
         };
 
         let resolved_profile = ResolvedProfile {
@@ -1396,6 +1411,95 @@ mod tests {
         );
 
         // Clean up
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_context_path_tilde_expansion() {
+        use crate::config::{Config, ResolvedProfile, RuntimeConfig};
+        use std::collections::HashMap;
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Create a test workspace directory
+        let temp_dir = std::env::temp_dir().join(format!("ab_tilde_{}", std::process::id()));
+        let workspace_path = temp_dir.join("workspace");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&workspace_path).unwrap();
+
+        let config = Config {
+            workspace_dir: PathBuf::from("/workspaces"),
+            base_repo_dir: PathBuf::from("/repos"),
+            default_profile: None,
+            profiles: HashMap::new(),
+            runtime: RuntimeConfig {
+                backend: "podman".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                skip_mounts: vec![],
+            },
+            context: String::new(),
+            context_path: "~/.my-context".to_string(), // Test tilde expansion
+        };
+
+        let resolved_profile = ResolvedProfile {
+            mounts: vec![],
+            env: vec![],
+            env_passthrough: vec![],
+            ports: vec![],
+            hosts: vec![],
+            context: vec!["line1".to_string(), "line2".to_string()],
+        };
+
+        let container_config = build_container_config(
+            &config,
+            &workspace_path,
+            &workspace_path,
+            true,
+            false,
+            None,
+            &resolved_profile,
+            &[],
+            &[],
+            &[],
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        // Get the username that would be used in the container
+        let username = std::env::var("USER")
+            .or_else(|_| std::env::var("LOGNAME"))
+            .unwrap_or_else(|_| "user".to_string());
+
+        let expected_container_home = format!("/home/{}", username);
+        let expected_path = format!("{}/.my-context", expected_container_home);
+
+        // Find the context mount
+        let context_mount = container_config
+            .mounts
+            .iter()
+            .find(|m| m.contains(&expected_path))
+            .expect("Context mount with expanded path not found");
+
+        // Verify the path was expanded correctly
+        assert!(
+            context_mount.ends_with(&format!(":{}:rw", expected_path)),
+            "Context path should be expanded to {} but got {}",
+            expected_path,
+            context_mount
+        );
+
+        // Clean up the temp file
+        let parts: Vec<&str> = context_mount.split(':').collect();
+        let host_path = parts[0];
+        let _ = fs::remove_file(host_path);
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }
