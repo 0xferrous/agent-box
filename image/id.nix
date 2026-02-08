@@ -1,1 +1,0 @@
-{ uid = 1000; gid = 100; uname = "dmnt"; gname = "users"; }
