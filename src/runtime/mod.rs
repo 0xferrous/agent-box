@@ -181,6 +181,7 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
 /// - command: command arguments to pass to the container entrypoint
 /// - should_skip: if true, skip mounts that are already covered by parent mounts
 /// - network: optional network mode (e.g. "host", "bridge", "none")
+#[allow(clippy::too_many_arguments)]
 pub fn build_container_config(
     config: &Config,
     workspace_path: &Path,
@@ -300,8 +301,6 @@ pub fn build_container_config(
 
     // Create context file if context is not empty
     if !resolved_profile.context.is_empty() {
-        use std::io::Write;
-
         // Create a temporary file with a unique name
         let context_content = resolved_profile.context.join("\n");
         let timestamp = std::time::SystemTime::now()
@@ -311,10 +310,8 @@ pub fn build_container_config(
         let pid = std::process::id();
         let context_file_path = format!("/tmp/agent-box-context-{}-{}", timestamp, pid);
 
-        // Write context to file
-        let mut file = std::fs::File::create(&context_file_path)
-            .map_err(|e| eyre::eyre!("Failed to create context file: {}", e))?;
-        file.write_all(context_content.as_bytes())
+        // Write context to file (this automatically closes and flushes)
+        std::fs::write(&context_file_path, context_content.as_bytes())
             .map_err(|e| eyre::eyre!("Failed to write context file: {}", e))?;
 
         eprintln!("DEBUG: Created context file at {}", context_file_path);
@@ -590,17 +587,23 @@ mod tests {
     #[test]
     fn test_add_mounts_skips_covered_paths() {
         // Test that symlink chain paths under already-mounted directories are skipped
-        let mut binds = vec!["/nix/store:/nix/store:ro".to_string()];
-
-        // Create a temp symlink that points into /nix/store (simulated)
+        let base_dir = std::env::temp_dir().join(format!("ab_base_{}", std::process::id()));
         let temp_dir = std::env::temp_dir().join(format!("ab_covered_{}", std::process::id()));
         let link_path = temp_dir.join("mylink");
 
+        // Create base directory that will be mounted
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        // Create temp directory for the symlink
         let _ = std::fs::remove_dir_all(&temp_dir);
         std::fs::create_dir_all(&temp_dir).unwrap();
 
-        // Create symlink to /nix/store (which exists)
-        std::os::unix::fs::symlink("/nix/store", &link_path).unwrap();
+        // Create initial bind for the base directory
+        let mut binds = vec![format!("{}:{}:ro", base_dir.display(), base_dir.display())];
+
+        // Create symlink to base_dir (which exists)
+        std::os::unix::fs::symlink(&base_dir, &link_path).unwrap();
 
         let mount = Mount {
             spec: link_path.to_string_lossy().to_string(),
@@ -612,11 +615,12 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);
+        let _ = std::fs::remove_dir_all(&base_dir);
 
-        // Should have 2 mounts: original /nix/store and the symlink itself
-        // The symlink target (/nix/store) should NOT be added again
+        // Should have 2 mounts: original base_dir and the symlink itself
+        // The symlink target (base_dir) should NOT be added again
         assert_eq!(binds.len(), 2);
-        assert!(binds[0].starts_with("/nix/store:"));
+        assert!(binds[0].contains(&base_dir.file_name().unwrap().to_string_lossy().to_string()));
         assert!(binds[1].contains("mylink"));
     }
 
