@@ -224,22 +224,31 @@ fn run() -> eyre::Result<()> {
                 WorkspaceType::Jj
             };
 
-            // Create workspace first if --new flag is set (only valid for session mode)
-            if create_new {
-                let session_name = session
-                    .as_ref()
-                    .expect("session required when --new is set");
-                new_workspace(&config, repo.as_deref(), Some(session_name), wtype)?;
-            }
-
-            // Resolve repo_id from repo argument
-            let repo_id = resolve_repo_id(&config, repo.as_deref())?;
-
             // Build container configuration
             let (workspace_path, source_path) = if local {
-                let path = repo_id.source_path(&config);
+                // In local mode, use current directory (git root) directly
+                // No need to check if it's in base_repo_dir since we're not creating a workspace
+                let path = if let Some(repo_name) = repo.as_deref() {
+                    // If repo is explicitly provided, still try to locate it
+                    let repo_id = locate_repo(&config, Some(repo_name))?;
+                    repo_id.source_path(&config)
+                } else {
+                    // Use git root from current directory
+                    repo::find_git_root()?
+                };
                 (path.clone(), path)
             } else {
+                // In session mode, we need a valid repo_id in base_repo_dir
+                // Create workspace first if --new flag is set
+                if create_new {
+                    let session_name = session
+                        .as_ref()
+                        .expect("session required when --new is set");
+                    new_workspace(&config, repo.as_deref(), Some(session_name), wtype)?;
+                }
+
+                // Resolve repo_id from repo argument
+                let repo_id = resolve_repo_id(&config, repo.as_deref())?;
                 let session_name = session.as_ref().expect("session required");
                 let workspace_path = repo_id.workspace_path(&config, wtype, session_name);
                 let source_path = repo_id.source_path(&config);
