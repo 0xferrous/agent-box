@@ -320,8 +320,8 @@ pub fn build_container_config(
         eprintln!("DEBUG: Created context file at {}", context_file_path);
         eprintln!("DEBUG: Context content:\n{}", context_content);
 
-        // Add mount for context file (read-only)
-        binds.push(format!("{}:/tmp/context:ro", context_file_path));
+        // Add mount for context file (read-write so user can edit)
+        binds.push(format!("{}:/tmp/context:rw", context_file_path));
     }
 
     Ok(ContainerConfig {
@@ -1301,7 +1301,7 @@ mod tests {
         let context_mount = container_config
             .mounts
             .iter()
-            .find(|m| m.ends_with(":/tmp/context:ro"))
+            .find(|m| m.ends_with(":/tmp/context:rw"))
             .expect("Context mount not found");
 
         // Extract the host path from the mount string (format: host:container:mode)
@@ -1309,7 +1309,7 @@ mod tests {
         assert_eq!(parts.len(), 3, "Mount should have 3 parts");
         let host_path = parts[0];
         assert_eq!(parts[1], "/tmp/context");
-        assert_eq!(parts[2], "ro");
+        assert_eq!(parts[2], "rw");
 
         // Verify the context file exists and has correct content
         assert!(
