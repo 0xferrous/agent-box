@@ -147,7 +147,27 @@ fn parse_single_cli_mount(arg: &str, home_relative: bool) -> Result<Mount> {
         return Err(eyre::eyre!("Empty mount path after mode prefix: {}", arg));
     }
 
-    // Validate path format (must start with / or ~)
+    // For CLI mounts, allow relative host source paths and resolve them against cwd.
+    // For src:dst, only source is resolved here. Destination is left as-is and
+    // later expanded/validated in Mount::resolve_paths (must be absolute or ~).
+    let spec = if let Some((src, dst)) = spec.split_once(':') {
+        if src.starts_with('/') || src.starts_with('~') {
+            spec
+        } else {
+            let cwd = std::env::current_dir()
+                .map_err(|e| eyre::eyre!("Failed to resolve current directory: {}", e))?;
+            let abs_src = cwd.join(src).to_string_lossy().to_string();
+            format!("{}:{}", abs_src, dst)
+        }
+    } else if spec.starts_with('/') || spec.starts_with('~') {
+        spec
+    } else {
+        let cwd = std::env::current_dir()
+            .map_err(|e| eyre::eyre!("Failed to resolve current directory: {}", e))?;
+        cwd.join(&spec).to_string_lossy().to_string()
+    };
+
+    // Validate path format (source side must now be absolute or home-relative)
     let path_to_check = if spec.contains(':') {
         // For src:dst format, check the src part
         spec.split(':').next().unwrap()
@@ -1033,6 +1053,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_cli_mount_relative_src_with_dst_resolves_against_cwd() {
+        let cwd = std::env::current_dir().unwrap();
+        let m = parse_single_cli_mount("ro:../pierre:/app", true).unwrap();
+        assert_eq!(m.mode, MountMode::Ro);
+        assert_eq!(
+            m.spec,
+            format!("{}:/app", cwd.join("../pierre").to_string_lossy())
+        );
+    }
+
+    #[test]
     fn test_parse_cli_mount_absolute_with_mode() {
         let m = parse_single_cli_mount("ro:/etc/hosts", false).unwrap();
         assert_eq!(m.mode, MountMode::Ro);
@@ -1046,9 +1077,16 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_cli_mount_relative_path_fails() {
-        assert!(parse_single_cli_mount("data/stuff", true).is_err());
-        assert!(parse_single_cli_mount("ro:data/stuff", true).is_err());
+    fn test_parse_cli_mount_relative_path_resolves_against_cwd() {
+        let cwd = std::env::current_dir().unwrap();
+
+        let m1 = parse_single_cli_mount("data/stuff", true).unwrap();
+        assert!(m1.spec.starts_with('/'));
+        assert_eq!(m1.spec, cwd.join("data/stuff").to_string_lossy());
+
+        let m2 = parse_single_cli_mount("ro:data/stuff", true).unwrap();
+        assert_eq!(m2.mode, MountMode::Ro);
+        assert_eq!(m2.spec, cwd.join("data/stuff").to_string_lossy());
     }
 
     #[test]

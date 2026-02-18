@@ -279,7 +279,8 @@ When an AI agent spawns with this context, it can read the context file (default
 
 ### Mount Path Syntax
 
-Paths must be absolute (`/...`) or home-relative (`~/...`).
+Config-defined mount paths must be absolute (`/...`) or home-relative (`~/...`).
+For CLI mounts (`-m`/`-M`), relative host source paths are also accepted and resolved against the current working directory.
 
 **`absolute` vs `home_relative`:**
 
@@ -972,7 +973,8 @@ Add extra mounts beyond what's configured in `~/.agent-box.toml`:
 
 Format: `[MODE:]PATH` or `[MODE:]SRC:DST`
 - `MODE` is optional: `ro` (read-only), `rw` (read-write, default), or `o` (overlay, Podman only)
-- `PATH` must be absolute (`/...`) or home-relative (`~/...`)
+- `PATH` can be absolute (`/...`), home-relative (`~/...`), or relative (`../...`, `./...`)
+- Relative host source paths are resolved against the current working directory
 
 Examples:
 ```bash
@@ -981,6 +983,7 @@ Examples:
 -M /nix/store       # rw mount, same absolute path on both sides
 -M o:/tmp/cache     # overlay mount (Podman only)
 -m ~/src:/app       # explicit mapping: ~/src on host → /app in container
+-m ../pierre        # relative host path resolved against current working directory
 -M '/tmp/kitty-*'   # glob: mounts every matching path (quote to prevent shell expansion)
 ```
 

@@ -76,12 +76,14 @@ enum Commands {
         ro: bool,
         /// Additional mount (home-relative). Format: [MODE:]PATH or [MODE:]SRC:DST
         /// MODE is ro, rw, or o (default: rw). Paths use ~ for home directory.
-        /// Example: -m ~/.config/git -m ro:~/secrets -m rw:~/data:/app/data
+        /// Relative host source paths are resolved against the current working directory.
+        /// Example: -m ~/.config/git -m ro:~/secrets -m rw:~/data:/app/data -m ../pierre
         #[arg(long, short = 'm', value_name = "MOUNT")]
         mount: Vec<String>,
         /// Additional mount (absolute). Format: [MODE:]PATH or [MODE:]SRC:DST
         /// MODE is ro, rw, or o (default: rw). Same path used on host and container.
-        /// Example: -M /nix/store -M ro:/etc/hosts
+        /// Relative host source paths are resolved against the current working directory.
+        /// Example: -M /nix/store -M ro:/etc/hosts -M ../shared
         #[arg(long = "Mount", short = 'M', value_name = "MOUNT")]
         mount_abs: Vec<String>,
         /// Additional profiles to apply (can be specified multiple times).
