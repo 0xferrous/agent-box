@@ -41,6 +41,7 @@ Agent Box solves this by:
 - [How It Works](#how-it-works)
 - [How-To](#how-to)
   - [Forward GPG Agent to Containers](#forward-gpg-agent-to-containers)
+  - [Enable pi image paste via portal wrapper](#enable-pi-image-paste-via-portal-wrapper)
   - [Share Host's Nix Store with Containers](#share-hosts-nix-store-with-containers)
 - [Requirements](#requirements)
 
@@ -623,9 +624,12 @@ Example:
     enable = true;
     # optional:
     # socketPath = "/run/user/1000/agent-portal/portal.sock";
+    # wlPasteBinary = "${pkgs.wl-clipboard}/bin/wl-paste";
   };
 }
 ```
+
+`wlPasteBinary` (or env `AGENT_PORTAL_HOST_WL_PASTE`) ensures the host service uses a real host `wl-paste` binary and avoids wrapper recursion.
 
 ### Wrappers (Transparent Portal Access)
 
@@ -1166,6 +1170,38 @@ home_relative = [
 - **"IPC call has been cancelled"**: Usually means your default key is on a smartcard that isn't connected. Specify a different key with `gpg -u <keyid>`.
 - **Verify sockets are working**: Run `gpg-connect-agent 'getinfo socket_name' /bye` - should show the socket path and return `OK`.
 - **List keys**: `gpg --list-secret-keys` - keys with `>` after `sec` are on smartcards.
+
+### Enable pi image paste via portal wrapper
+
+To make image paste transparent for `pi`, use the portal-backed `wl-paste` wrapper inside the container.
+
+Requirements:
+
+1. Portal host service is running on host (`agent-portal-host`)
+2. Portal socket is mounted into container (handled by `ab spawn` when portal is enabled)
+3. Wrapper binary is installed in container and appears on `PATH` as `wl-paste`
+
+Recommended setup:
+
+- Install wrapper package in container image (or mount wrapper binary directory)
+- Ensure wrapper `wl-paste` is found before any system `wl-paste` in `PATH`
+- Set `WAYLAND_DISPLAY=wayland-1` for `pi`
+
+Example environment for `pi` session:
+
+```bash
+export WAYLAND_DISPLAY=wayland-1
+# AGENT_PORTAL_SOCKET is injected by ab when portal is enabled
+```
+
+With this, when `pi` runs:
+
+```bash
+wl-paste --list-types
+wl-paste --type <mime> --no-newline
+```
+
+it uses the portal wrapper and can read approved host clipboard images transparently.
 
 ### Share Host's Nix Store with Containers
 

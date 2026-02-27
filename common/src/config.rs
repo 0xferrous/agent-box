@@ -1429,6 +1429,7 @@ mod tests {
 
             // Arrays should default to empty
             assert!(config.runtime.env.is_empty());
+            assert!(config.runtime.env_passthrough.is_empty());
             assert!(config.runtime.mounts.ro.absolute.is_empty());
             assert!(config.runtime.mounts.ro.home_relative.is_empty());
             assert!(config.runtime.mounts.rw.absolute.is_empty());

@@ -369,11 +369,30 @@ fn wait_with_timeout(
     }
 }
 
+fn resolve_host_wl_paste_binary() -> String {
+    if let Ok(bin) = std::env::var("AGENT_PORTAL_HOST_WL_PASTE")
+        && !bin.trim().is_empty()
+    {
+        return bin;
+    }
+
+    // Prefer host/system binaries to avoid recursive wrapper invocation.
+    for candidate in ["/run/current-system/sw/bin/wl-paste", "/usr/bin/wl-paste"] {
+        if std::path::Path::new(candidate).exists() {
+            return candidate.to_string();
+        }
+    }
+
+    "wl-paste".to_string()
+}
+
 fn clipboard_read_image(allowed_mime: &[String], max_bytes: usize) -> Result<(String, Vec<u8>)> {
-    let types_out = Command::new("wl-paste")
+    let wl_paste_bin = resolve_host_wl_paste_binary();
+
+    let types_out = Command::new(&wl_paste_bin)
         .arg("--list-types")
         .output()
-        .wrap_err("failed to run wl-paste --list-types")?;
+        .wrap_err_with(|| format!("failed to run {} --list-types", wl_paste_bin))?;
 
     if !types_out.status.success() {
         return Err(eyre::eyre!(
@@ -394,10 +413,10 @@ fn clipboard_read_image(allowed_mime: &[String], max_bytes: usize) -> Result<(St
         .cloned()
         .ok_or_else(|| eyre::eyre!("clipboard does not currently contain an allowed image MIME"))?;
 
-    let out = Command::new("wl-paste")
+    let out = Command::new(&wl_paste_bin)
         .args(["--no-newline", "--type", &mime])
         .output()
-        .wrap_err("failed to run wl-paste for image bytes")?;
+        .wrap_err_with(|| format!("failed to run {} for image bytes", wl_paste_bin))?;
 
     if !out.status.success() {
         return Err(eyre::eyre!(
