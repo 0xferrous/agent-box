@@ -24,4 +24,4 @@ cargo clippy -p ab --all-targets -- -D warnings
 
 ## Notes
 
-`ab` depends on shared logic from `agent-box-common`.
+`ab` keeps spawn/runtime orchestration in `ab/src/runtime` and uses `agent-box-common` for shared config/repo/portal functionality.

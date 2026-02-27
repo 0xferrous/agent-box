@@ -5,8 +5,11 @@ use agent_box_common::config::{
 use agent_box_common::display::info;
 use agent_box_common::path::WorkspaceType;
 use agent_box_common::repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
-use agent_box_common::runtime::{self, build_container_config, create_runtime};
 use clap::{Parser, Subcommand};
+
+mod runtime;
+
+use runtime::{build_container_config, create_runtime};
 
 #[derive(Parser)]
 #[command(name = "ab")]

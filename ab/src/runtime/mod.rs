@@ -7,7 +7,7 @@ use glob::Pattern as GlobPattern;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::config::{Config, Mount, MountMode, ResolvedMount, ResolvedProfile};
+use agent_box_common::config::{Config, Mount, MountMode, ResolvedMount, ResolvedProfile};
 
 /// Check if a path should be skipped based on configured skip patterns.
 /// Returns true if the path matches any of the skip patterns (supports globs).
@@ -1306,7 +1306,7 @@ mod tests {
 
     #[test]
     fn test_context_file_created_and_mounted() {
-        use crate::config::{Config, ResolvedProfile, RuntimeConfig};
+        use agent_box_common::config::{Config, ResolvedProfile, RuntimeConfig};
         use std::collections::HashMap;
         use std::fs;
         use std::path::PathBuf;
@@ -1335,7 +1335,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
-            portal: crate::portal::PortalConfig::default(),
+            portal: agent_box_common::portal::PortalConfig::default(),
         };
 
         let resolved_profile = ResolvedProfile {
@@ -1399,7 +1399,7 @@ mod tests {
 
     #[test]
     fn test_no_context_file_when_empty() {
-        use crate::config::{Config, ResolvedProfile, RuntimeConfig};
+        use agent_box_common::config::{Config, ResolvedProfile, RuntimeConfig};
         use std::collections::HashMap;
         use std::fs;
         use std::path::PathBuf;
@@ -1428,7 +1428,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
-            portal: crate::portal::PortalConfig::default(),
+            portal: agent_box_common::portal::PortalConfig::default(),
         };
 
         let resolved_profile = ResolvedProfile {
@@ -1474,7 +1474,7 @@ mod tests {
 
     #[test]
     fn test_context_path_tilde_expansion() {
-        use crate::config::{Config, ResolvedProfile, RuntimeConfig};
+        use agent_box_common::config::{Config, ResolvedProfile, RuntimeConfig};
         use std::collections::HashMap;
         use std::fs;
         use std::path::PathBuf;
@@ -1503,7 +1503,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "~/.my-context".to_string(), // Test tilde expansion
-            portal: crate::portal::PortalConfig::default(),
+            portal: agent_box_common::portal::PortalConfig::default(),
         };
 
         let resolved_profile = ResolvedProfile {

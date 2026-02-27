@@ -4,4 +4,3 @@ pub mod path;
 pub mod portal;
 pub mod portal_client;
 pub mod repo;
-pub mod runtime;

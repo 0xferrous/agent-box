@@ -6,7 +6,6 @@ Shared library crate used by `ab`, `agent-portal`, and `agent-wrappers`.
 
 - `config`: layered config loading/validation
 - `repo`: repo/workspace resolution helpers
-- `runtime`: container runtime config/building
 - `portal`: portal protocol + policy/config types
 - `portal_client`: reusable client for portal socket calls
 - `path`, `display`: path/display utilities

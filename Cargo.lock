@@ -9,7 +9,9 @@ dependencies = [
  "agent-box-common",
  "clap",
  "eyre",
+ "glob",
  "inquire",
+ "nix",
 ]
 
 [[package]]
