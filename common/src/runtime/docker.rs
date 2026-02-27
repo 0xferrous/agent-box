@@ -11,6 +11,12 @@ impl DockerRuntime {
     }
 }
 
+impl Default for DockerRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContainerBackend for DockerRuntime {
     fn path_exists_in_image(&self, image: &str, path: &str) -> Result<bool> {
         use std::process::Stdio;

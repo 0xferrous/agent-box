@@ -29,6 +29,7 @@ Agent Box solves this by:
   - [Host Entries](#host-entries)
   - [Network Mode](#network-mode)
   - [Runtime Backends](#runtime-backends)
+  - [Portal (Experimental)](#portal-experimental)
   - [Profiles](#profiles)
   - [Validating Configuration](#validating-configuration)
   - [Previewing Resolved Configuration](#previewing-resolved-configuration)
@@ -45,7 +46,8 @@ Agent Box solves this by:
 ## Installation
 
 ```bash
-cargo install --path .
+cargo install --path ab
+cargo install --path portal
 ```
 
 ## Configuration
@@ -78,6 +80,14 @@ home_relative = ["~/.local/share"]
 [runtime.mounts.o]  # Overlay mounts (Podman only)
 absolute = []
 home_relative = []
+
+[portal]
+enabled = true
+socket_path = "/run/user/1000/agent-portal/portal.sock"
+prompt_command = "rofi -dmenu -p 'agent-portal'"  # Optional, required if policy asks
+
+[portal.policy.defaults]
+clipboard_read_image = "allow" # allow | ask | deny
 ```
 
 All paths support `~` expansion and will be canonicalized.
@@ -244,7 +254,7 @@ For a project with specific architecture and conventions, you might define:
 ```toml
 context = """
 This is a web service built with axum and sqlx. Architecture:
-- src/main.rs: Application entry point and server setup
+- ab/src/main.rs: Application entry point and CLI setup
 - src/routes/: HTTP route handlers (one file per resource)
 - src/models/: Database models using sqlx
 - src/services/: Business logic layer
@@ -560,6 +570,35 @@ Agent Box supports two container runtimes:
 
 **Overlay mounts** allow containers to write to a mounted directory without affecting the host. Changes are stored in a temporary overlay layer that is discarded when the container exits.
 
+### Portal (Experimental)
+
+Agent Box now ships two portal binaries:
+
+- `agent-portal-host`: host-side broker service (Unix socket + MessagePack)
+- `agent-portal-cli`: debug client for testing requests
+
+The first implemented method is `clipboard.read_image`.
+
+When portal is enabled, `ab spawn` will mount the configured portal socket path into the container and set `AGENT_PORTAL_SOCKET`.
+
+Behavior is configured under `[portal]` in `~/.agent-box.toml`.
+
+- `policy.defaults.clipboard_read_image = "allow"` allows image clipboard reads without prompting
+- `"ask"` requires a dmenu-style prompt command (`prompt_command`)
+- `"deny"` blocks the request
+
+Debug examples:
+
+```bash
+agent-portal-cli ping
+agent-portal-cli whoami
+agent-portal-cli clipboard-read-image --out /tmp/clip.bin
+```
+
+A sample user service unit is available at:
+
+- `contrib/systemd/agent-portal-host.service`
+
 ### Profiles
 
 Profiles let you define named sets of mounts, environment variables, context, and passthrough variables that can be selectively applied when spawning containers. This enables modular, reusable configurations for different toolchains.
@@ -743,7 +782,7 @@ Repo-local config (`~/repos/myproject/.agent-box.toml`):
 ```toml
 context = """
 MyProject - Web service for task management:
-- Main entry point: src/main.rs
+- Main entry point: ab/src/main.rs
 - API handlers in src/handlers/
 - Database models in src/models/
 - Tests must cover all API endpoints
@@ -1105,3 +1144,4 @@ This mounts the Nix store read-only and the daemon socket read-write, allowing t
 - Git
 - Jujutsu (for jj workspaces)
 - Docker or Podman (for container spawning)
+- `wl-paste` (from `wl-clipboard`) on host when using portal clipboard methods

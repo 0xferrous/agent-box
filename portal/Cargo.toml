@@ -1,0 +1,19 @@
+[package]
+name = "agent-portal"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "agent-portal-host"
+path = "src/bin/agent-portal-host.rs"
+
+[[bin]]
+name = "agent-portal-cli"
+path = "src/bin/agent-portal-cli.rs"
+
+[dependencies]
+agent-box-common = { path = "../common" }
+clap = { version = "4.5.54", features = ["derive"] }
+eyre = "0.6.12"
+nix = { version = "0.30.1", features = ["socket"] }
+rmp-serde = "1.3.0"

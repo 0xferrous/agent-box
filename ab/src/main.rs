@@ -1,20 +1,12 @@
-use clap::{Parser, Subcommand};
-
-mod config;
-mod display;
-mod path;
-mod repo;
-mod runtime;
-
-use config::{
+use agent_box_common::config::{
     collect_profiles_to_apply, load_config, resolve_profiles, validate_config,
     validate_config_or_err,
 };
-use display::info;
-use repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
-use runtime::{build_container_config, create_runtime};
-
-use crate::path::WorkspaceType;
+use agent_box_common::display::info;
+use agent_box_common::path::WorkspaceType;
+use agent_box_common::repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
+use agent_box_common::runtime::{self, build_container_config, create_runtime};
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "ab")]
@@ -236,7 +228,7 @@ fn run() -> eyre::Result<()> {
                     repo_id.source_path(&config)
                 } else {
                     // Use git root from current directory
-                    repo::find_git_root()?
+                    agent_box_common::repo::find_git_root()?
                 };
                 (path.clone(), path)
             } else {

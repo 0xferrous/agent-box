@@ -332,6 +332,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
         }
     }
 
@@ -394,6 +395,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
         };
 
         // Test exact match
@@ -435,6 +437,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
         };
 
         // Test partial match (searching for "agent-box" should match "fr/agent-box")
@@ -476,6 +479,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
         };
 
         // Test no match

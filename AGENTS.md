@@ -30,3 +30,9 @@ This is referenced in `image/flake.nix` as:
 ```nix
 pkgs.callPackage "${nix}/docker.nix" { ... }
 ```
+
+## portal ADR
+
+- Portal architecture decisions are tracked in `adr/`.
+- Current accepted ADR: `adr/0001-agent-portal.md`.
+- For portal work, keep implementation and configuration aligned with this ADR.

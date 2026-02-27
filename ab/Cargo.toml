@@ -1,0 +1,14 @@
+[package]
+name = "ab"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "ab"
+path = "src/main.rs"
+
+[dependencies]
+agent-box-common = { path = "../common" }
+clap = { version = "4.5.54", features = ["derive"] }
+eyre = "0.6.12"
+inquire = "0.7"

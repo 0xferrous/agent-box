@@ -12,6 +12,7 @@ use std::{
 };
 
 use crate::path::expand_path;
+use crate::portal::PortalConfig;
 use crate::repo::find_git_root;
 
 /// Mount mode for container volumes
@@ -593,6 +594,9 @@ pub struct Config {
     /// Path where context file will be mounted inside the container
     #[serde(default = "default_context_path")]
     pub context_path: String,
+    /// Host portal service configuration
+    #[serde(default)]
+    pub portal: PortalConfig,
 }
 
 /// Resolved mounts, env, ports, and hosts from profile resolution
@@ -1514,6 +1518,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
         }
     }
 

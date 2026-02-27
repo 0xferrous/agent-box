@@ -307,6 +307,20 @@ pub fn build_container_config(
         }
     }
 
+    // Mount portal socket into container (if enabled and socket exists)
+    if config.portal.enabled {
+        let socket_path = std::path::PathBuf::from(&config.portal.socket_path);
+        if socket_path.exists() {
+            binds.push(format_bind(&socket_path, &socket_path, MountMode::Rw));
+            env.push(format!("AGENT_PORTAL_SOCKET={}", socket_path.display()));
+        } else {
+            eprintln!(
+                "WARNING: portal is enabled but socket does not exist yet: {}",
+                socket_path.display()
+            );
+        }
+    }
+
     // Combine profile ports and CLI ports, deduplicate (first occurrence wins)
     let mut all_ports: Vec<String> = resolved_profile.ports.clone();
     all_ports.extend(cli_ports.iter().cloned());
@@ -326,7 +340,7 @@ pub fn build_container_config(
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs();
+            .as_nanos();
         let pid = std::process::id();
         let context_file_path = format!("/tmp/agent-box-context-{}-{}", timestamp, pid);
 
@@ -1321,6 +1335,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
         };
 
         let resolved_profile = ResolvedProfile {
@@ -1353,11 +1368,11 @@ mod tests {
         )
         .unwrap();
 
-        // Find the context mount
+        // Find the context mount (host side should be our temp context file)
         let context_mount = container_config
             .mounts
             .iter()
-            .find(|m| m.ends_with(":/tmp/context:rw"))
+            .find(|m| m.starts_with("/tmp/agent-box-context-") && m.ends_with(":/tmp/context:rw"))
             .expect("Context mount not found");
 
         // Extract the host path from the mount string (format: host:container:mode)
@@ -1413,6 +1428,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
         };
 
         let resolved_profile = ResolvedProfile {
@@ -1487,6 +1503,7 @@ mod tests {
             },
             context: String::new(),
             context_path: "~/.my-context".to_string(), // Test tilde expansion
+            portal: crate::portal::PortalConfig::default(),
         };
 
         let resolved_profile = ResolvedProfile {

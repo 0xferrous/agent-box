@@ -1,21 +1,7 @@
-[package]
-name = "agent-box"
-version = "0.1.0"
-edition = "2024"
-
-[[bin]]
-name = "ab"
-path = "src/main.rs"
-
-[dependencies]
-clap = { version = "4.5.54", features = ["derive"] }
-gix = { version = "0.77.0", features = ["blocking-network-client", "status"] }
-nix = { version = "0.30.1", features = ["fs", "user"] }
-serde = { version = "1.0", features = ["derive"] }
-figment = { version = "0.10.19", features = ["toml", "test"] }
-jj-lib = { version = "0.37.0", features = ["git"] }
-eyre = "0.6.12"
-inquire = "0.7"
-walkdir = "2.5"
-shell-words = "1.1.1"
-glob = "0.3.2"
+[workspace]
+members = [
+  "common",
+  "ab",
+  "portal",
+]
+resolver = "3"
