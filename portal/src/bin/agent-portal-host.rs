@@ -1,13 +1,14 @@
 use agent_box_common::config::load_config;
 use agent_box_common::portal::{
-    PolicyDecision, PortalRequest, PortalResponse, RequestMethod, ResponseResult,
+    GhExecPolicyMode, PolicyDecision, PortalRequest, PortalResponse, RequestMethod, ResponseResult,
     extract_podman_container_id_from_cgroup,
 };
 use clap::Parser;
 use eyre::{Context, Result};
 use nix::sys::socket::{getsockopt, sockopt::PeerCredentials};
 use rmp_serde::{from_read, to_vec_named};
-use std::collections::{HashMap, VecDeque};
+use serde::Deserialize;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::IsTerminal;
 use std::io::Write;
@@ -36,6 +37,21 @@ struct CallerIdentity {
     uid: u32,
     gid: u32,
     container_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GhCommandOperation {
+    Read,
+    Write,
+    ReadWrite,
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+struct GhPolicyData {
+    op_map: HashMap<String, GhCommandOperation>,
+    prefixes: HashSet<String>,
+    roots: HashSet<String>,
 }
 
 #[derive(Debug)]
@@ -83,6 +99,7 @@ struct AppState {
     inflight: Arc<AtomicUsize>,
     rate: Arc<Mutex<RateLimiter>>,
     prompt_inflight: Arc<AtomicUsize>,
+    gh_policy: GhPolicyData,
 }
 
 fn init_logging() {
@@ -133,6 +150,12 @@ fn run() -> Result<()> {
 
     info!(socket = %socket_path.display(), "agent-portal-host listening");
     debug!(config = ?portal, "loaded portal config");
+    info!(
+        clipboard_read_image_policy = ?portal.policy.defaults.clipboard_read_image,
+        gh_exec_policy = ?portal.policy.defaults.gh_exec,
+        container_overrides = portal.policy.containers.len(),
+        "portal default policies"
+    );
     debug!(
         max_inflight = portal.limits.max_inflight,
         rate_per_minute = portal.limits.rate_per_minute,
@@ -149,6 +172,7 @@ fn run() -> Result<()> {
             portal.limits.rate_burst,
         ))),
         prompt_inflight: Arc::new(AtomicUsize::new(0)),
+        gh_policy: load_embedded_gh_policy()?,
     };
 
     for incoming in listener.incoming() {
@@ -272,6 +296,75 @@ fn handle_client(mut stream: UnixStream, state: &AppState) -> Result<()> {
                     }
                     Err(e) => PortalResponse::err(req.id, "clipboard_failed", e.to_string()),
                 },
+            }
+        }
+        RequestMethod::GhExec {
+            argv,
+            reason,
+            require_approval: _,
+        } => {
+            let policy = state
+                .cfg
+                .policy_for_container(identity.container_id.as_deref());
+
+            let operation = classify_gh_operation(&state.gh_policy, &argv);
+            let should_prompt = match policy.gh_exec {
+                GhExecPolicyMode::AskForAll => true,
+                GhExecPolicyMode::AskForWrites => {
+                    matches!(
+                        operation,
+                        GhCommandOperation::Write
+                            | GhCommandOperation::ReadWrite
+                            | GhCommandOperation::Unknown
+                    )
+                }
+                GhExecPolicyMode::AskForNone => false,
+                GhExecPolicyMode::DenyAll => {
+                    return send_response(
+                        stream,
+                        &PortalResponse::err(req.id, "denied", "gh.exec denied by policy"),
+                    );
+                }
+            };
+
+            info!(
+                request_id = req.id,
+                container_id = identity.container_id.as_deref().unwrap_or("(none)"),
+                policy = ?policy.gh_exec,
+                operation = ?operation,
+                should_prompt,
+                "gh.exec policy decision"
+            );
+            debug!(request_id = req.id, argv = ?argv, "gh.exec argv");
+
+            if should_prompt {
+                match prompt_allow(state, &identity, reason.as_deref()) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return send_response(
+                            stream,
+                            &PortalResponse::err(req.id, "denied", "request denied by policy"),
+                        );
+                    }
+                    Err(e) => {
+                        return send_response(
+                            stream,
+                            &PortalResponse::err(req.id, "prompt_failed", e.to_string()),
+                        );
+                    }
+                }
+            }
+
+            match execute_gh_on_host(&argv) {
+                Ok((exit_code, stdout, stderr)) => PortalResponse::ok(
+                    req.id,
+                    ResponseResult::GhExec {
+                        exit_code,
+                        stdout,
+                        stderr,
+                    },
+                ),
+                Err(e) => PortalResponse::err(req.id, "gh_exec_failed", e.to_string()),
             }
         }
     };
@@ -411,6 +504,113 @@ fn wait_with_timeout(
 
         thread::sleep(Duration::from_millis(20));
     }
+}
+
+fn resolve_host_gh_binary() -> String {
+    if let Ok(bin) = std::env::var("AGENT_PORTAL_HOST_GH")
+        && !bin.trim().is_empty()
+    {
+        return bin;
+    }
+
+    for candidate in ["/run/current-system/sw/bin/gh", "/usr/bin/gh"] {
+        if std::path::Path::new(candidate).exists() {
+            return candidate.to_string();
+        }
+    }
+
+    "gh".to_string()
+}
+
+fn execute_gh_on_host(argv: &[String]) -> Result<(i32, Vec<u8>, Vec<u8>)> {
+    let gh_bin = resolve_host_gh_binary();
+    let out = Command::new(&gh_bin)
+        .args(argv)
+        .output()
+        .wrap_err_with(|| format!("failed to run host gh binary: {}", gh_bin))?;
+
+    let exit_code = out.status.code().unwrap_or(1);
+    Ok((exit_code, out.stdout, out.stderr))
+}
+
+#[derive(Debug, Deserialize)]
+struct EmbeddedGhReport {
+    commands: Vec<EmbeddedGhCommand>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmbeddedGhCommand {
+    command: String,
+    operation: String,
+}
+
+fn load_embedded_gh_policy() -> Result<GhPolicyData> {
+    let raw = include_str!("../../gh-leaf-command-read-write-report.json");
+    let report: EmbeddedGhReport =
+        serde_json::from_str(raw).wrap_err("invalid embedded gh policy JSON")?;
+
+    let mut op_map = HashMap::new();
+    let mut prefixes = HashSet::new();
+    let mut roots = HashSet::new();
+
+    for row in report.commands {
+        let op = match row.operation.as_str() {
+            "Read" => GhCommandOperation::Read,
+            "Write" => GhCommandOperation::Write,
+            "Read/Write" => GhCommandOperation::ReadWrite,
+            _ => GhCommandOperation::Unknown,
+        };
+
+        let parts: Vec<&str> = row.command.split(' ').collect();
+        if let Some(root) = parts.first() {
+            roots.insert((*root).to_string());
+        }
+
+        for i in 1..=parts.len() {
+            prefixes.insert(parts[..i].join(" "));
+        }
+
+        op_map.insert(row.command, op);
+    }
+
+    Ok(GhPolicyData {
+        op_map,
+        prefixes,
+        roots,
+    })
+}
+
+fn classify_gh_operation(policy: &GhPolicyData, argv: &[String]) -> GhCommandOperation {
+    let Some(start) = argv.iter().position(|tok| policy.roots.contains(tok)) else {
+        return GhCommandOperation::Unknown;
+    };
+
+    let mut parts: Vec<String> = Vec::new();
+    for tok in argv.iter().skip(start) {
+        if tok.starts_with('-') {
+            continue;
+        }
+
+        let mut candidate_parts = parts.clone();
+        candidate_parts.push(tok.clone());
+        let candidate = candidate_parts.join(" ");
+        if policy.prefixes.contains(&candidate) {
+            parts.push(tok.clone());
+        } else {
+            break;
+        }
+    }
+
+    if parts.is_empty() {
+        return GhCommandOperation::Unknown;
+    }
+
+    let path = parts.join(" ");
+    policy
+        .op_map
+        .get(&path)
+        .copied()
+        .unwrap_or(GhCommandOperation::Unknown)
 }
 
 fn resolve_host_wl_paste_binary() -> String {

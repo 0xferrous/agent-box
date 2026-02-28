@@ -26,6 +26,14 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    GhExec {
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long, default_value_t = false)]
+        require_approval: bool,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        argv: Vec<String>,
+    },
 }
 
 fn main() {
@@ -46,6 +54,15 @@ fn run() -> Result<()> {
         Commands::Ping => RequestMethod::Ping,
         Commands::Whoami => RequestMethod::WhoAmI,
         Commands::ClipboardReadImage { reason, .. } => RequestMethod::ClipboardReadImage { reason },
+        Commands::GhExec {
+            reason,
+            require_approval,
+            argv,
+        } => RequestMethod::GhExec {
+            argv,
+            reason,
+            require_approval,
+        },
     };
 
     let client = if let Some(socket) = cli.socket {
@@ -85,6 +102,19 @@ fn run() -> Result<()> {
             } else {
                 println!("received {} bytes ({})", bytes.len(), mime);
             }
+        }
+        ResponseResult::GhExec {
+            exit_code,
+            stdout,
+            stderr,
+        } => {
+            if !stdout.is_empty() {
+                print!("{}", String::from_utf8_lossy(&stdout));
+            }
+            if !stderr.is_empty() {
+                eprint!("{}", String::from_utf8_lossy(&stderr));
+            }
+            std::process::exit(exit_code);
         }
     }
 

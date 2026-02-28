@@ -11,6 +11,10 @@ path = "src/bin/wl-paste.rs"
 name = "agent-portal-client"
 path = "src/bin/agent-portal-client.rs"
 
+[[bin]]
+name = "gh"
+path = "src/bin/gh.rs"
+
 [dependencies]
 agent-box-common.workspace = true
 clap.workspace = true

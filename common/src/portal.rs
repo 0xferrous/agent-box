@@ -52,15 +52,34 @@ fn default_clipboard_policy() -> PolicyDecision {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GhExecPolicyMode {
+    #[serde(alias = "allow")]
+    AskForNone,
+    #[serde(alias = "ask")]
+    AskForWrites,
+    AskForAll,
+    #[serde(alias = "deny")]
+    DenyAll,
+}
+
+fn default_gh_exec_policy() -> GhExecPolicyMode {
+    GhExecPolicyMode::AskForWrites
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Serialize)]
 pub struct MethodPolicy {
     #[serde(default = "default_clipboard_policy")]
     pub clipboard_read_image: PolicyDecision,
+    #[serde(default = "default_gh_exec_policy")]
+    pub gh_exec: GhExecPolicyMode,
 }
 
 impl Default for MethodPolicy {
     fn default() -> Self {
         Self {
             clipboard_read_image: default_clipboard_policy(),
+            gh_exec: default_gh_exec_policy(),
         }
     }
 }
@@ -185,6 +204,12 @@ pub enum RequestMethod {
     WhoAmI,
     #[serde(rename = "clipboard.read_image")]
     ClipboardReadImage { reason: Option<String> },
+    #[serde(rename = "gh.exec")]
+    GhExec {
+        argv: Vec<String>,
+        reason: Option<String>,
+        require_approval: bool,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -217,6 +242,11 @@ pub enum ResponseResult {
     ClipboardImage {
         mime: String,
         bytes: Vec<u8>,
+    },
+    GhExec {
+        exit_code: i32,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
     },
 }
 
@@ -317,24 +347,29 @@ mod tests {
                 .allowed_mime
                 .contains(&"image/png".to_string())
         );
+        assert_eq!(cfg.policy.defaults.gh_exec, GhExecPolicyMode::AskForWrites);
     }
 
     #[test]
     fn policy_for_container_uses_override_when_present() {
         let mut cfg = PortalConfig::default();
         cfg.policy.defaults.clipboard_read_image = PolicyDecision::Ask;
+        cfg.policy.defaults.gh_exec = GhExecPolicyMode::AskForWrites;
         cfg.policy.containers.insert(
             "abc123".to_string(),
             MethodPolicy {
                 clipboard_read_image: PolicyDecision::Deny,
+                gh_exec: GhExecPolicyMode::DenyAll,
             },
         );
 
         let p = cfg.policy_for_container(Some("abc123"));
         assert_eq!(p.clipboard_read_image, PolicyDecision::Deny);
+        assert_eq!(p.gh_exec, GhExecPolicyMode::DenyAll);
 
         let p2 = cfg.policy_for_container(Some("missing"));
         assert_eq!(p2.clipboard_read_image, PolicyDecision::Ask);
+        assert_eq!(p2.gh_exec, GhExecPolicyMode::AskForWrites);
     }
 
     #[test]

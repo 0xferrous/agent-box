@@ -17,6 +17,13 @@ pub struct ClipboardImage {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone)]
+pub struct GhExecResult {
+    pub exit_code: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
 impl PortalClient {
     pub fn from_env_or_config() -> Self {
         if let Ok(path) = std::env::var("AGENT_PORTAL_SOCKET") {
@@ -78,6 +85,31 @@ impl PortalClient {
         let result = self.request(RequestMethod::ClipboardReadImage { reason })?;
         match result {
             ResponseResult::ClipboardImage { mime, bytes } => Ok(ClipboardImage { mime, bytes }),
+            other => Err(eyre::eyre!("unexpected response: {other:?}")),
+        }
+    }
+
+    pub fn gh_exec(
+        &self,
+        argv: Vec<String>,
+        reason: Option<String>,
+        require_approval: bool,
+    ) -> Result<GhExecResult> {
+        let result = self.request(RequestMethod::GhExec {
+            argv,
+            reason,
+            require_approval,
+        })?;
+        match result {
+            ResponseResult::GhExec {
+                exit_code,
+                stdout,
+                stderr,
+            } => Ok(GhExecResult {
+                exit_code,
+                stdout,
+                stderr,
+            }),
             other => Err(eyre::eyre!("unexpected response: {other:?}")),
         }
     }
