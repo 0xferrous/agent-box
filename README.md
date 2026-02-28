@@ -99,6 +99,7 @@ prompt_command = "rofi -dmenu -p 'agent-portal'"  # Optional, required if policy
 
 [portal.policy.defaults]
 clipboard_read_image = "allow" # allow | ask | deny
+gh_exec = "ask_for_writes"      # ask_for_writes | ask_for_all | ask_for_none | deny_all
 ```
 
 All paths support `~` expansion and will be canonicalized.
@@ -588,15 +589,19 @@ Agent Box now ships two portal binaries:
 - `agent-portal-host`: host-side broker service (Unix socket + MessagePack)
 - `agent-portal-cli`: official CLI client for portal requests (usable by tooling/wrappers)
 
-The first implemented method is `clipboard.read_image`.
+Implemented methods include `clipboard.read_image` and `gh.exec`.
 
 When portal is enabled, `ab spawn` will mount the configured portal socket path into the container and set `AGENT_PORTAL_SOCKET`.
 
 Behavior is configured under `[portal]` in `~/.agent-box.toml`.
 
 - `policy.defaults.clipboard_read_image = "allow"` allows image clipboard reads without prompting
-- `"ask"` requires a dmenu-style prompt command (`prompt_command`)
-- `"deny"` blocks the request
+- `clipboard_read_image = "ask"` requires a dmenu-style prompt command (`prompt_command`)
+- `clipboard_read_image = "deny"` blocks clipboard request
+- `policy.defaults.gh_exec = "ask_for_writes"` prompts only for `gh` write/unknown operations (using embedded leaf-command policy)
+- `gh_exec = "ask_for_all"` prompts for every `gh` command
+- `gh_exec = "ask_for_none"` never prompts for `gh` commands
+- `gh_exec = "deny_all"` blocks all `gh.exec` requests
 
 Debug examples:
 
@@ -641,6 +646,8 @@ Current wrappers:
 
 - `wl-paste` (portal-backed compatibility wrapper for image clipboard reads)
 - `agent-portal-client` (generic helper CLI for scripts/wrappers)
+- `gh` (transparent guest wrapper that forwards execution to portal method `gh.exec`)
+- `portal/scripts/gh-policy-gen.py` (optional generator for `gh` leaf command read/write reports)
 
 `wl-paste` wrapper supports the Wayland image flow used by `pi`:
 
@@ -650,6 +657,21 @@ wl-paste --type image/png --no-newline
 ```
 
 It talks to the portal via `AGENT_PORTAL_SOCKET` (or config/default socket path) and returns compatible output so agent workflows remain transparent.
+
+`gh` wrapper flow:
+
+```bash
+cargo run -p agent-wrappers --bin gh -- pr view 123
+```
+
+`gh` wrapper does not prompt in-container and does not execute host `gh` directly.
+Instead it sends `gh.exec` requests to `agent-portal-host`, where policy and user prompts are enforced on host side.
+
+Optional report generation (for command inventory/classification):
+
+```bash
+nix-shell -p gh python3 --run 'python3 portal/scripts/gh-policy-gen.py'
+```
 
 ### Profiles
 

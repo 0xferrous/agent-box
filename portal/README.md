@@ -12,6 +12,12 @@ Portal crate containing host service and official CLI for container-to-host medi
 - `ping`
 - `whoami`
 - `clipboard.read_image`
+- `gh.exec`
+
+`gh.exec` classification uses an embedded-at-compile-time command policy generated at repo root
+via `portal/scripts/gh-policy-gen.py`:
+`portal/gh-leaf-command-read-write-report.json`.
+Policy mode is configured in `~/.agent-box.toml` via `portal.policy.defaults.gh_exec`.
 
 ## Logging
 

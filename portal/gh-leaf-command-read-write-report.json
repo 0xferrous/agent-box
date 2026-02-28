@@ -1,0 +1,1105 @@
+{
+  "schema_version": 1,
+  "source": "gh help recursive traversal",
+  "total_leaf_commands": 183,
+  "commands": [
+    {
+      "command": "agent-task create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create an agent task (preview)"
+    },
+    {
+      "command": "agent-task list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List agent tasks (preview)"
+    },
+    {
+      "command": "agent-task view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View an agent task session (preview)"
+    },
+    {
+      "command": "alias delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete set aliases"
+    },
+    {
+      "command": "alias import",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Import aliases from a YAML file"
+    },
+    {
+      "command": "alias list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List your aliases"
+    },
+    {
+      "command": "alias set",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a shortcut for a gh command"
+    },
+    {
+      "command": "api",
+      "depth": 1,
+      "operation": "Read/Write",
+      "description": "Make an authenticated GitHub API request"
+    },
+    {
+      "command": "attestation download",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Download an artifact's attestations for offline use"
+    },
+    {
+      "command": "attestation trusted-root",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Output trusted_root.jsonl contents, likely for offline verification"
+    },
+    {
+      "command": "attestation verify",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Verify an artifact's integrity using attestations"
+    },
+    {
+      "command": "auth login",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Log in to a GitHub account"
+    },
+    {
+      "command": "auth logout",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Log out of a GitHub account"
+    },
+    {
+      "command": "auth refresh",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Refresh stored authentication credentials"
+    },
+    {
+      "command": "auth setup-git",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Setup git with GitHub CLI"
+    },
+    {
+      "command": "auth status",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Display active account and authentication state on each known GitHub host"
+    },
+    {
+      "command": "auth switch",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Switch active GitHub account"
+    },
+    {
+      "command": "auth token",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Print the authentication token gh uses for a hostname and account"
+    },
+    {
+      "command": "browse",
+      "depth": 1,
+      "operation": "Read",
+      "description": "Open repositories, issues, pull requests, and more in the browser"
+    },
+    {
+      "command": "cache delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete GitHub Actions caches"
+    },
+    {
+      "command": "cache list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List GitHub Actions caches"
+    },
+    {
+      "command": "co",
+      "depth": 1,
+      "operation": "Write",
+      "description": "Alias for \"pr checkout\""
+    },
+    {
+      "command": "codespace code",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Open a codespace in Visual Studio Code"
+    },
+    {
+      "command": "codespace cp",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Copy files between local and remote file systems"
+    },
+    {
+      "command": "codespace create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a codespace"
+    },
+    {
+      "command": "codespace delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete codespaces"
+    },
+    {
+      "command": "codespace edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit a codespace"
+    },
+    {
+      "command": "codespace jupyter",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Open a codespace in JupyterLab"
+    },
+    {
+      "command": "codespace list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List codespaces"
+    },
+    {
+      "command": "codespace logs",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Access codespace logs"
+    },
+    {
+      "command": "codespace ports forward",
+      "depth": 3,
+      "operation": "Read/Write",
+      "description": "Forward ports"
+    },
+    {
+      "command": "codespace ports visibility",
+      "depth": 3,
+      "operation": "Read/Write",
+      "description": "Change the visibility of the forwarded port"
+    },
+    {
+      "command": "codespace rebuild",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Rebuild a codespace"
+    },
+    {
+      "command": "codespace ssh",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "SSH into a codespace"
+    },
+    {
+      "command": "codespace stop",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Stop a running codespace"
+    },
+    {
+      "command": "codespace view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View details about a codespace"
+    },
+    {
+      "command": "completion",
+      "depth": 1,
+      "operation": "Read",
+      "description": "Generate shell completion scripts"
+    },
+    {
+      "command": "config clear-cache",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Clear the cli cache"
+    },
+    {
+      "command": "config get",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Print the value of a given configuration key"
+    },
+    {
+      "command": "config list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Print a list of configuration keys and values"
+    },
+    {
+      "command": "config set",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Update configuration with a value for the given key"
+    },
+    {
+      "command": "copilot",
+      "depth": 1,
+      "operation": "Read/Write",
+      "description": "Run the GitHub Copilot CLI (preview)"
+    },
+    {
+      "command": "extension browse",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Enter a UI for browsing, adding, and removing extensions"
+    },
+    {
+      "command": "extension create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a new extension"
+    },
+    {
+      "command": "extension exec",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Execute an installed extension"
+    },
+    {
+      "command": "extension install",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Install a gh extension from a repository"
+    },
+    {
+      "command": "extension list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List installed extension commands"
+    },
+    {
+      "command": "extension remove",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Remove an installed extension"
+    },
+    {
+      "command": "extension search",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Search extensions to the GitHub CLI"
+    },
+    {
+      "command": "extension upgrade",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Upgrade installed extensions"
+    },
+    {
+      "command": "gist clone",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Clone a gist locally"
+    },
+    {
+      "command": "gist create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a new gist"
+    },
+    {
+      "command": "gist delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a gist"
+    },
+    {
+      "command": "gist edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit one of your gists"
+    },
+    {
+      "command": "gist list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List your gists"
+    },
+    {
+      "command": "gist rename",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Rename a file in a gist"
+    },
+    {
+      "command": "gist view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View a gist"
+    },
+    {
+      "command": "gpg-key add",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Add a GPG key to your GitHub account"
+    },
+    {
+      "command": "gpg-key delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a GPG key from your GitHub account"
+    },
+    {
+      "command": "gpg-key list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Lists GPG keys in your GitHub account"
+    },
+    {
+      "command": "issue close",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Close issue"
+    },
+    {
+      "command": "issue comment",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Add a comment to an issue"
+    },
+    {
+      "command": "issue create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a new issue"
+    },
+    {
+      "command": "issue delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete issue"
+    },
+    {
+      "command": "issue develop",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Manage linked branches for an issue"
+    },
+    {
+      "command": "issue edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit issues"
+    },
+    {
+      "command": "issue list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List issues in a repository"
+    },
+    {
+      "command": "issue lock",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Lock issue conversation"
+    },
+    {
+      "command": "issue pin",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Pin a issue"
+    },
+    {
+      "command": "issue reopen",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Reopen issue"
+    },
+    {
+      "command": "issue status",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Show status of relevant issues"
+    },
+    {
+      "command": "issue transfer",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Transfer issue to another repository"
+    },
+    {
+      "command": "issue unlock",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Unlock issue conversation"
+    },
+    {
+      "command": "issue unpin",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Unpin a issue"
+    },
+    {
+      "command": "issue view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View an issue"
+    },
+    {
+      "command": "label clone",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Clones labels from one repository to another"
+    },
+    {
+      "command": "label create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a new label"
+    },
+    {
+      "command": "label delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a label from a repository"
+    },
+    {
+      "command": "label edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit a label"
+    },
+    {
+      "command": "label list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List labels in a repository"
+    },
+    {
+      "command": "org list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List organizations for the authenticated user."
+    },
+    {
+      "command": "pr checkout",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Check out a pull request in git"
+    },
+    {
+      "command": "pr checks",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Show CI status for a single pull request"
+    },
+    {
+      "command": "pr close",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Close a pull request"
+    },
+    {
+      "command": "pr comment",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Add a comment to a pull request"
+    },
+    {
+      "command": "pr create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a pull request"
+    },
+    {
+      "command": "pr diff",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View changes in a pull request"
+    },
+    {
+      "command": "pr edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit a pull request"
+    },
+    {
+      "command": "pr list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List pull requests in a repository"
+    },
+    {
+      "command": "pr lock",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Lock pull request conversation"
+    },
+    {
+      "command": "pr merge",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Merge a pull request"
+    },
+    {
+      "command": "pr ready",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Mark a pull request as ready for review"
+    },
+    {
+      "command": "pr reopen",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Reopen a pull request"
+    },
+    {
+      "command": "pr revert",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Revert a pull request"
+    },
+    {
+      "command": "pr review",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Add a review to a pull request"
+    },
+    {
+      "command": "pr status",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Show status of relevant pull requests"
+    },
+    {
+      "command": "pr unlock",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Unlock pull request conversation"
+    },
+    {
+      "command": "pr update-branch",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Update a pull request branch"
+    },
+    {
+      "command": "pr view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View a pull request"
+    },
+    {
+      "command": "preview prompter",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Execute a test program to preview the prompter"
+    },
+    {
+      "command": "project close",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Close a project"
+    },
+    {
+      "command": "project copy",
+      "depth": 2,
+      "operation": "Read/Write",
+      "description": "Copy a project"
+    },
+    {
+      "command": "project create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a project"
+    },
+    {
+      "command": "project delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a project"
+    },
+    {
+      "command": "project edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit a project"
+    },
+    {
+      "command": "project field-create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a field in a project"
+    },
+    {
+      "command": "project field-delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a field in a project"
+    },
+    {
+      "command": "project field-list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List the fields in a project"
+    },
+    {
+      "command": "project item-add",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Add a pull request or an issue to a project"
+    },
+    {
+      "command": "project item-archive",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Archive an item in a project"
+    },
+    {
+      "command": "project item-create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a draft issue item in a project"
+    },
+    {
+      "command": "project item-delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete an item from a project by ID"
+    },
+    {
+      "command": "project item-edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit an item in a project"
+    },
+    {
+      "command": "project item-list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List the items in a project"
+    },
+    {
+      "command": "project link",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Link a project to a repository or a team"
+    },
+    {
+      "command": "project list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List the projects for an owner"
+    },
+    {
+      "command": "project mark-template",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Mark a project as a template"
+    },
+    {
+      "command": "project unlink",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Unlink a project from a repository or a team"
+    },
+    {
+      "command": "project view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View a project"
+    },
+    {
+      "command": "release create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a new release"
+    },
+    {
+      "command": "release delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a release"
+    },
+    {
+      "command": "release delete-asset",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete an asset from a release"
+    },
+    {
+      "command": "release download",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Download release assets"
+    },
+    {
+      "command": "release edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit a release"
+    },
+    {
+      "command": "release list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List releases in a repository"
+    },
+    {
+      "command": "release upload",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Upload assets to a release"
+    },
+    {
+      "command": "release verify",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Verify the attestation for a release"
+    },
+    {
+      "command": "release verify-asset",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Verify that a given asset originated from a release"
+    },
+    {
+      "command": "release view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View information about a release"
+    },
+    {
+      "command": "repo archive",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Archive a repository"
+    },
+    {
+      "command": "repo autolink create",
+      "depth": 3,
+      "operation": "Write",
+      "description": "Create a new autolink reference"
+    },
+    {
+      "command": "repo autolink delete",
+      "depth": 3,
+      "operation": "Write",
+      "description": "Delete an autolink reference"
+    },
+    {
+      "command": "repo autolink list",
+      "depth": 3,
+      "operation": "Read",
+      "description": "List autolink references for a GitHub repository"
+    },
+    {
+      "command": "repo autolink view",
+      "depth": 3,
+      "operation": "Read",
+      "description": "View an autolink reference"
+    },
+    {
+      "command": "repo clone",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Clone a repository locally"
+    },
+    {
+      "command": "repo create",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a new repository"
+    },
+    {
+      "command": "repo delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a repository"
+    },
+    {
+      "command": "repo deploy-key add",
+      "depth": 3,
+      "operation": "Write",
+      "description": "Add a deploy key to a GitHub repository"
+    },
+    {
+      "command": "repo deploy-key delete",
+      "depth": 3,
+      "operation": "Write",
+      "description": "Delete a deploy key from a GitHub repository"
+    },
+    {
+      "command": "repo deploy-key list",
+      "depth": 3,
+      "operation": "Read",
+      "description": "List deploy keys in a GitHub repository"
+    },
+    {
+      "command": "repo edit",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Edit repository settings"
+    },
+    {
+      "command": "repo fork",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create a fork of a repository"
+    },
+    {
+      "command": "repo gitignore list",
+      "depth": 3,
+      "operation": "Read",
+      "description": "List available repository gitignore templates"
+    },
+    {
+      "command": "repo gitignore view",
+      "depth": 3,
+      "operation": "Read",
+      "description": "View an available repository gitignore template"
+    },
+    {
+      "command": "repo license list",
+      "depth": 3,
+      "operation": "Read",
+      "description": "List common repository licenses"
+    },
+    {
+      "command": "repo license view",
+      "depth": 3,
+      "operation": "Read",
+      "description": "View a specific repository license"
+    },
+    {
+      "command": "repo list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List repositories owned by user or organization"
+    },
+    {
+      "command": "repo rename",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Rename a repository"
+    },
+    {
+      "command": "repo set-default",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Configure default repository for this directory"
+    },
+    {
+      "command": "repo sync",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Sync a repository"
+    },
+    {
+      "command": "repo unarchive",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Unarchive a repository"
+    },
+    {
+      "command": "repo view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View a repository"
+    },
+    {
+      "command": "ruleset check",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View rules that would apply to a given branch"
+    },
+    {
+      "command": "ruleset list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List rulesets for a repository or organization"
+    },
+    {
+      "command": "ruleset view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View information about a ruleset"
+    },
+    {
+      "command": "run cancel",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Cancel a workflow run"
+    },
+    {
+      "command": "run delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete a workflow run"
+    },
+    {
+      "command": "run download",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Download artifacts generated by a workflow run"
+    },
+    {
+      "command": "run list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List recent workflow runs"
+    },
+    {
+      "command": "run rerun",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Rerun a run"
+    },
+    {
+      "command": "run view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View a summary of a workflow run"
+    },
+    {
+      "command": "run watch",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Watch a run until it completes, showing its progress"
+    },
+    {
+      "command": "search code",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Search within code"
+    },
+    {
+      "command": "search commits",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Search for commits"
+    },
+    {
+      "command": "search issues",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Search for issues"
+    },
+    {
+      "command": "search prs",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Search for pull requests"
+    },
+    {
+      "command": "search repos",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Search for repositories"
+    },
+    {
+      "command": "secret delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete secrets"
+    },
+    {
+      "command": "secret list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List secrets"
+    },
+    {
+      "command": "secret set",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create or update secrets"
+    },
+    {
+      "command": "ssh-key add",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Add an SSH key to your GitHub account"
+    },
+    {
+      "command": "ssh-key delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete an SSH key from your GitHub account"
+    },
+    {
+      "command": "ssh-key list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Lists SSH keys in your GitHub account"
+    },
+    {
+      "command": "status",
+      "depth": 1,
+      "operation": "Read",
+      "description": "Print information about relevant issues, pull requests, and notifications across repositories"
+    },
+    {
+      "command": "variable delete",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Delete variables"
+    },
+    {
+      "command": "variable get",
+      "depth": 2,
+      "operation": "Read",
+      "description": "Get variables"
+    },
+    {
+      "command": "variable list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List variables"
+    },
+    {
+      "command": "variable set",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Create or update variables"
+    },
+    {
+      "command": "workflow disable",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Disable a workflow"
+    },
+    {
+      "command": "workflow enable",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Enable a workflow"
+    },
+    {
+      "command": "workflow list",
+      "depth": 2,
+      "operation": "Read",
+      "description": "List workflows"
+    },
+    {
+      "command": "workflow run",
+      "depth": 2,
+      "operation": "Write",
+      "description": "Run a workflow by creating a workflow_dispatch event"
+    },
+    {
+      "command": "workflow view",
+      "depth": 2,
+      "operation": "Read",
+      "description": "View the summary of a workflow"
+    }
+  ]
+}

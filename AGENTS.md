@@ -31,6 +31,10 @@ This is referenced in `image/flake.nix` as:
 pkgs.callPackage "${nix}/docker.nix" { ... }
 ```
 
+## wrappers
+
+- implement wrapper binaries in Rust (keep wrapper runtime language consistent across `wrappers/`)
+
 ## portal ADR
 
 - Portal architecture decisions are tracked in `adr/`.
