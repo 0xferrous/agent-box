@@ -1,0 +1,1637 @@
+<!DOCTYPE HTML>
+<html lang="en" class="ayu sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Agent-box &amp; Portal Docs</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="User documentation for Agent-box and Portal">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "ayu";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-593042d7.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-07d51820.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('ayu')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Agent-box &amp; Portal Docs</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="agent-box--portal-documentation"><a class="header" href="#agent-box--portal-documentation">Agent-box &amp; Portal documentation</a></h1>
+<p>Welcome. This site documents two related projects:</p>
+<ul>
+<li><strong>Agent-box</strong>: workspace + container orchestration for autonomous coding agents</li>
+<li><strong>Portal</strong>: host capability mediation service (Unix socket + MessagePack), usable standalone</li>
+</ul>
+<p>If you are new, start with <a href="#choose-your-path">Choose your path</a>.</p>
+<h2 id="demo"><a class="header" href="#demo">Demo</a></h2>
+<p><img src="https://github.com/user-attachments/assets/c7aaaf16-fbcc-4669-97f3-33c423f2ff90" alt="Agent-box demo"></p>
+<p><em>(Click images to open in lightbox. Diagrams use mdbook-excalidraw with built-in zoom/pan.)</em></p>
+<h2 id="diátaxis-layout"><a class="header" href="#diátaxis-layout">Diátaxis layout</a></h2>
+<ul>
+<li><strong>Tutorials</strong>: guided learning paths</li>
+<li><strong>How-to guides</strong>: practical task playbooks</li>
+<li><strong>Reference</strong>: CLI/config contracts</li>
+<li><strong>Explanation</strong>: architecture and rationale</li>
+</ul>
+<h2 id="current-status"><a class="header" href="#current-status">Current status</a></h2>
+<p>Portal is still evolving. Where behavior is policy-sensitive, reference pages document defaults and configurable alternatives.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="choose-your-path"><a class="header" href="#choose-your-path">Choose your path</a></h1>
+<p>Use this quick routing guide to pick the right docs entry point.</p>
+<h2 id="i-want-sandboxed-local-agent-sessions"><a class="header" href="#i-want-sandboxed-local-agent-sessions">I want sandboxed local agent sessions</a></h2>
+<p>Use <strong>Agent-box</strong>.</p>
+<p>Start with: <a href="#tutorial-agent-box-first-run">Tutorial: Agent-box first run</a></p>
+<h2 id="i-want-host-capability-mediation-but-no-container-orchestrator"><a class="header" href="#i-want-host-capability-mediation-but-no-container-orchestrator">I want host capability mediation, but no container orchestrator</a></h2>
+<p>Use <strong>Portal standalone</strong>.</p>
+<p>Start with: <a href="#tutorial-portal-standalone-first-run">Tutorial: Portal standalone first run</a></p>
+<h2 id="i-want-agent-box-with-portal-enabled-wrappers"><a class="header" href="#i-want-agent-box-with-portal-enabled-wrappers">I want Agent-box with Portal-enabled wrappers</a></h2>
+<p>Use <strong>both</strong>.</p>
+<p>Start with: <a href="#tutorial-connect-portal-to-agent-box">Tutorial: Connect Portal to Agent-box</a></p>
+<h2 id="whats-the-difference"><a class="header" href="#whats-the-difference">What’s the difference?</a></h2>
+<ul>
+<li>Agent-box manages repositories, workspaces, and containers.</li>
+<li>Portal brokers selected host operations over a Unix socket with policy controls.</li>
+<li>Wrappers (for example <code>wl-paste</code>, <code>gh</code>) provide transparent, tool-compatible access to Portal methods.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tutorials"><a class="header" href="#tutorials">Tutorials</a></h1>
+<p>Tutorials are learning-oriented and linear. Pick one path and follow it end-to-end.</p>
+<ul>
+<li>New to Agent-box: <a href="#tutorial-agent-box-first-run">Agent-box first run</a></li>
+<li>New to Portal only: <a href="#tutorial-portal-standalone-first-run">Portal standalone first run</a></li>
+<li>Combining both: <a href="#tutorial-connect-portal-to-agent-box">Connect Portal to Agent-box</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tutorial-agent-box-first-run"><a class="header" href="#tutorial-agent-box-first-run">Tutorial: Agent-box first run</a></h1>
+<h2 id="outcome"><a class="header" href="#outcome">Outcome</a></h2>
+<p>You create a workspace and start a containerized session with <code>ab</code>.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<ul>
+<li><code>ab</code> installed</li>
+<li>Docker or Podman available</li>
+<li><code>~/.agent-box.toml</code> created with <code>workspace_dir</code>, <code>base_repo_dir</code>, and <code>runtime.image</code></li>
+</ul>
+<h2 id="steps"><a class="header" href="#steps">Steps</a></h2>
+<ol>
+<li>
+<p>Check basic CLI access:</p>
+<pre><code class="language-bash">ab info
+</code></pre>
+</li>
+<li>
+<p>Create a workspace (JJ by default):</p>
+<pre><code class="language-bash">ab new myrepo -s first-session
+</code></pre>
+</li>
+<li>
+<p>Spawn the container:</p>
+<pre><code class="language-bash">ab spawn -r myrepo -s first-session
+</code></pre>
+</li>
+<li>
+<p>Inside the container, verify where you are:</p>
+<pre><code class="language-bash">pwd
+</code></pre>
+<p>You should be in the workspace path managed by Agent-box.</p>
+</li>
+</ol>
+<h2 id="what-you-learned"><a class="header" href="#what-you-learned">What you learned</a></h2>
+<ul>
+<li>How to create a named session workspace</li>
+<li>How to spawn a container bound to that workspace</li>
+</ul>
+<p>Next: see <a href="#how-to-guides">How-to guides</a> for custom runtime and CI usage.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tutorial-portal-standalone-first-run"><a class="header" href="#tutorial-portal-standalone-first-run">Tutorial: Portal standalone first run</a></h1>
+<h2 id="outcome-1"><a class="header" href="#outcome-1">Outcome</a></h2>
+<p>You run <code>agent-portal-host</code> and send successful requests with <code>agent-portal-cli</code>.</p>
+<h2 id="prerequisites-1"><a class="header" href="#prerequisites-1">Prerequisites</a></h2>
+<ul>
+<li><code>agent-portal-host</code> and <code>agent-portal-cli</code> installed</li>
+<li><code>~/.agent-box.toml</code> with <code>[portal]</code> enabled</li>
+<li><code>wl-paste</code> available on host if testing clipboard method</li>
+</ul>
+<h2 id="minimal-config"><a class="header" href="#minimal-config">Minimal config</a></h2>
+<pre><code class="language-toml">[portal]
+enabled = true
+socket_path = "/run/user/1000/agent-portal/portal.sock"
+
+[portal.policy.defaults]
+clipboard_read_image = "allow"
+gh_exec = "ask_for_writes"
+</code></pre>
+<h2 id="steps-1"><a class="header" href="#steps-1">Steps</a></h2>
+<ol>
+<li>
+<p>Start the host service in a terminal:</p>
+<pre><code class="language-bash">RUST_LOG=info agent-portal-host
+</code></pre>
+</li>
+<li>
+<p>In another terminal, verify connectivity:</p>
+<pre><code class="language-bash">agent-portal-cli ping
+agent-portal-cli whoami
+</code></pre>
+</li>
+<li>
+<p>Optionally test image clipboard request:</p>
+<pre><code class="language-bash">agent-portal-cli clipboard-read-image --out /tmp/clip.bin
+</code></pre>
+</li>
+</ol>
+<h2 id="what-you-learned-1"><a class="header" href="#what-you-learned-1">What you learned</a></h2>
+<ul>
+<li>Portal works independently of Agent-box</li>
+<li>Portal methods are reachable over a Unix socket via official CLI</li>
+</ul>
+<p>Next: <a href="#portal-wrapper-contract-reference">Portal wrapper contract</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="tutorial-connect-portal-to-agent-box"><a class="header" href="#tutorial-connect-portal-to-agent-box">Tutorial: Connect Portal to Agent-box</a></h1>
+<h2 id="outcome-2"><a class="header" href="#outcome-2">Outcome</a></h2>
+<p>You run an Agent-box container where tools can use Portal through wrapper binaries.</p>
+<h2 id="prerequisites-2"><a class="header" href="#prerequisites-2">Prerequisites</a></h2>
+<ul>
+<li>Agent-box setup working (<code>ab spawn</code> succeeds)</li>
+<li>Portal host running (<code>agent-portal-host</code>)</li>
+<li>Wrappers installed in container image or mounted into container PATH</li>
+</ul>
+<h2 id="steps-2"><a class="header" href="#steps-2">Steps</a></h2>
+<ol>
+<li>
+<p>Enable portal in config:</p>
+<pre><code class="language-toml">[portal]
+enabled = true
+socket_path = "/run/user/1000/agent-portal/portal.sock"
+
+[portal.policy.defaults]
+clipboard_read_image = "allow"
+gh_exec = "ask_for_writes"
+</code></pre>
+</li>
+<li>
+<p>Start portal host on the machine running containers:</p>
+<pre><code class="language-bash">agent-portal-host
+</code></pre>
+</li>
+<li>
+<p>Spawn an Agent-box session:</p>
+<pre><code class="language-bash">ab spawn -r myrepo -s portal-session
+</code></pre>
+<p>Agent-box mounts the configured socket and sets <code>AGENT_PORTAL_SOCKET</code> in the container.</p>
+</li>
+<li>
+<p>In the container, validate wrapper-backed flow:</p>
+<pre><code class="language-bash">wl-paste --list-types
+</code></pre>
+<p>If wrappers are in PATH and policy allows, this returns an image MIME type when present.</p>
+</li>
+</ol>
+<h2 id="what-you-learned-2"><a class="header" href="#what-you-learned-2">What you learned</a></h2>
+<ul>
+<li>How Agent-box and Portal integrate</li>
+<li>How wrappers keep calling conventions tool-compatible</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-guides"><a class="header" href="#how-to-guides">How-to guides</a></h1>
+<p>How-to guides are task-oriented. Use these when you already understand the basics and need to get work done.</p>
+<ul>
+<li>Agent-box profiles: <a href="#agent-box-use-profiles-effectively">use profiles effectively</a></li>
+<li>Agent-box runtime tuning: <a href="#how-to-customize-agent-box-container-runtime">customize container runtime</a></li>
+<li>GPG integration: <a href="#how-to-forward-gpg-agent-to-agent-box-containers">forward GPG agent</a></li>
+<li>Nix integration: <a href="#how-to-share-host-nix-store-with-containers">share host Nix store</a></li>
+<li>Portal wrappers: <a href="#how-to-run-portal-with-a-custom-wrapper">run with a custom wrapper</a></li>
+<li>Portal troubleshooting: <a href="#how-to-debug-portal-wrapper-failures">debug wrapper failures</a></li>
+<li>pi image paste: <a href="#how-to-enable-pi-image-paste-via-portal-wrapper">enable pi image paste</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-run-portal-with-a-custom-wrapper"><a class="header" href="#how-to-run-portal-with-a-custom-wrapper">How to run Portal with a custom wrapper</a></h1>
+<h2 id="goal"><a class="header" href="#goal">Goal</a></h2>
+<p>Add a wrapper binary that forwards a host-capability request through Portal.</p>
+<h2 id="prerequisites-3"><a class="header" href="#prerequisites-3">Prerequisites</a></h2>
+<ul>
+<li>Running <code>agent-portal-host</code></li>
+<li>Access to socket path (<code>AGENT_PORTAL_SOCKET</code> or config default)</li>
+<li>Wrapper implemented in Rust (<code>wrappers/</code> convention)</li>
+</ul>
+<h2 id="steps-3"><a class="header" href="#steps-3">Steps</a></h2>
+<ol>
+<li>Define wrapper CLI shape that matches the tool you want to emulate.</li>
+<li>In wrapper, create a <code>PortalClient</code> using env/config resolution.</li>
+<li>Translate wrapper input into a Portal method request.</li>
+<li>Forward host response bytes/stdout/stderr to wrapper stdout/stderr.</li>
+<li>Exit with mapped exit code from portal response.</li>
+<li>Place wrapper ahead of native utility on PATH in target environment.</li>
+</ol>
+<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
+<ul>
+<li>Wrapper command succeeds against live <code>agent-portal-host</code>.</li>
+<li>Expected output format matches calling tool expectations.</li>
+<li>Failure path returns useful stderr and non-zero code.</li>
+</ul>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="#portal-wrapper-contract-reference">Portal wrapper contract</a></li>
+<li><a href="#portal-configuration-reference">Portal config</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-debug-portal-wrapper-failures"><a class="header" href="#how-to-debug-portal-wrapper-failures">How to debug Portal wrapper failures</a></h1>
+<h2 id="goal-1"><a class="header" href="#goal-1">Goal</a></h2>
+<p>Find and fix common failures for <code>wl-paste</code>/<code>gh</code> wrappers and other Portal clients.</p>
+<h2 id="quick-checklist"><a class="header" href="#quick-checklist">Quick checklist</a></h2>
+<ol>
+<li>Is host service running?
+<pre><code class="language-bash">pgrep -a agent-portal-host
+</code></pre>
+</li>
+<li>Can you ping the socket directly?
+<pre><code class="language-bash">agent-portal-cli ping
+</code></pre>
+</li>
+<li>Is the wrapper using the expected socket path?
+<pre><code class="language-bash">echo "$AGENT_PORTAL_SOCKET"
+</code></pre>
+</li>
+<li>Enable host logs:
+<pre><code class="language-bash">RUST_LOG=debug agent-portal-host
+</code></pre>
+</li>
+</ol>
+<h2 id="common-failures"><a class="header" href="#common-failures">Common failures</a></h2>
+<ul>
+<li><strong>failed to connect to socket</strong>
+<ul>
+<li>socket path mismatch or host service not running</li>
+</ul>
+</li>
+<li><strong>denied</strong>
+<ul>
+<li>policy mode blocks method/container</li>
+</ul>
+</li>
+<li><strong>prompt_failed</strong>
+<ul>
+<li><code>prompt_command</code> missing or exits non-zero in ask-mode</li>
+</ul>
+</li>
+<li><strong>clipboard_failed</strong>
+<ul>
+<li>no allowed image MIME currently in clipboard or host <code>wl-paste</code> issue</li>
+</ul>
+</li>
+<li><strong>gh_exec_failed</strong>
+<ul>
+<li>host <code>gh</code> unavailable or command failure</li>
+</ul>
+</li>
+</ul>
+<h2 id="next-actions"><a class="header" href="#next-actions">Next actions</a></h2>
+<ul>
+<li>Confirm <code>[portal.policy]</code> defaults and overrides.</li>
+<li>Confirm wrapper is first on PATH in container.</li>
+<li>Re-run request via <code>agent-portal-cli</code> to isolate wrapper-specific parsing issues.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-enable-pi-image-paste-via-portal-wrapper"><a class="header" href="#how-to-enable-pi-image-paste-via-portal-wrapper">How to enable pi image paste via portal wrapper</a></h1>
+<h2 id="goal-2"><a class="header" href="#goal-2">Goal</a></h2>
+<p>Make image paste work transparently in <code>pi</code> sessions using portal-backed <code>wl-paste</code> wrapper.</p>
+<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<ol>
+<li><code>agent-portal-host</code> running on host</li>
+<li>Portal enabled in <code>~/.agent-box.toml</code></li>
+<li>Wrapper binary (<code>wl-paste</code>) available in container PATH before system <code>wl-paste</code></li>
+</ol>
+<h2 id="steps-4"><a class="header" href="#steps-4">Steps</a></h2>
+<ol>
+<li>Start portal host:</li>
+</ol>
+<pre><code class="language-bash">agent-portal-host
+</code></pre>
+<ol start="2">
+<li>Spawn with Agent-box (portal enabled):</li>
+</ol>
+<pre><code class="language-bash">ab spawn -s my-session
+</code></pre>
+<ol start="3">
+<li>In container/session env:</li>
+</ol>
+<pre><code class="language-bash">export WAYLAND_DISPLAY=wayland-1
+# AGENT_PORTAL_SOCKET is injected by ab when portal is enabled
+</code></pre>
+<ol start="4">
+<li>Validate wrapper flow:</li>
+</ol>
+<pre><code class="language-bash">wl-paste --list-types
+wl-paste --type image/png --no-newline
+</code></pre>
+<h2 id="notes"><a class="header" href="#notes">Notes</a></h2>
+<ul>
+<li>Policy is enforced host-side by <code>agent-portal-host</code>.</li>
+<li>Wrapper should not prompt in-container.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="agent-box-use-profiles-effectively"><a class="header" href="#agent-box-use-profiles-effectively">Agent-box: use profiles effectively</a></h1>
+<h2 id="goal-3"><a class="header" href="#goal-3">Goal</a></h2>
+<p>Use profiles to keep <code>~/.agent-box.toml</code> modular and compose task-specific runtime settings.</p>
+<h2 id="when-to-use-this"><a class="header" href="#when-to-use-this">When to use this</a></h2>
+<p>Use profiles when you want to:</p>
+<ul>
+<li>avoid one giant <code>[runtime]</code> block</li>
+<li>share reusable config chunks (for example <code>nix</code>, <code>gpg</code>, <code>rust</code>)</li>
+<li>apply extra settings only for specific sessions</li>
+</ul>
+<h2 id="step-1-define-reusable-profiles"><a class="header" href="#step-1-define-reusable-profiles">Step 1: Define reusable profiles</a></h2>
+<p>Create named profiles under <code>[profiles.*]</code>:</p>
+<pre><code class="language-toml">[profiles.nix]
+env = ["NIX_REMOTE=daemon"]
+mounts.ro.absolute = ["/nix/store"]
+mounts.rw.absolute = ["/nix/var/nix/daemon-socket/"]
+
+[profiles.rust]
+mounts.rw.home_relative = ["~/.cargo"]
+
+[profiles.gpg]
+mounts.rw.absolute = [
+  "/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent",
+]
+</code></pre>
+<h2 id="step-2-create-a-baseline-profile"><a class="header" href="#step-2-create-a-baseline-profile">Step 2: Create a baseline profile</a></h2>
+<p>Compose a default profile with <code>extends</code>:</p>
+<pre><code class="language-toml">default_profile = "base"
+
+[profiles.base]
+extends = ["nix", "rust"]
+</code></pre>
+<p>This profile is automatically applied to <code>ab spawn</code>.</p>
+<h2 id="step-3-add-extra-profiles-per-command"><a class="header" href="#step-3-add-extra-profiles-per-command">Step 3: Add extra profiles per command</a></h2>
+<p>Apply additional profiles in CLI order:</p>
+<pre><code class="language-bash">ab spawn -r myrepo -s mysession -p gpg
+</code></pre>
+<p>You can stack multiple flags:</p>
+<pre><code class="language-bash">ab spawn -r myrepo -s mysession -p rust -p gpg
+</code></pre>
+<h2 id="step-4-verify-the-resolved-config"><a class="header" href="#step-4-verify-the-resolved-config">Step 4: Verify the resolved config</a></h2>
+<p>Inspect what Agent-box will actually use:</p>
+<pre><code class="language-bash">ab dbg resolve
+ab dbg resolve -p rust -p gpg
+</code></pre>
+<p>Validate that your config is accepted:</p>
+<pre><code class="language-bash">ab dbg validate
+</code></pre>
+<h2 id="merge-behavior-checklist"><a class="header" href="#merge-behavior-checklist">Merge behavior checklist</a></h2>
+<ul>
+<li>Scalars: later layers override earlier layers</li>
+<li>Arrays: values append</li>
+<li>Objects: merge recursively</li>
+<li>Profile order matters for scalar conflicts</li>
+</ul>
+<h2 id="related-reference"><a class="header" href="#related-reference">Related reference</a></h2>
+<ul>
+<li><a href="#agent-box-configuration-reference">Agent-box config reference</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-customize-agent-box-container-runtime"><a class="header" href="#how-to-customize-agent-box-container-runtime">How to customize Agent-box container runtime</a></h1>
+<h2 id="goal-4"><a class="header" href="#goal-4">Goal</a></h2>
+<p>Adjust runtime backend, image, entrypoint, mounts, ports, hosts, and network mode.</p>
+<h2 id="steps-5"><a class="header" href="#steps-5">Steps</a></h2>
+<ol>
+<li>
+<p>Edit <code>~/.agent-box.toml</code>:</p>
+<pre><code class="language-toml">[runtime]
+backend = "podman" # or "docker"
+image = "agent-box:latest"
+entrypoint = "/bin/bash"
+ports = ["8080:8080"]
+hosts = ["host.docker.internal:host-gateway"]
+
+[runtime.mounts.ro]
+absolute = ["/nix/store"]
+
+[runtime.mounts.rw]
+home_relative = ["~/.local/share"]
+</code></pre>
+</li>
+<li>
+<p>Validate configuration:</p>
+<pre><code class="language-bash">ab dbg validate
+</code></pre>
+</li>
+<li>
+<p>Preview resolved profile/runtime:</p>
+<pre><code class="language-bash">ab dbg resolve -p your-profile
+</code></pre>
+</li>
+<li>
+<p>Override per spawn when needed:</p>
+<pre><code class="language-bash">ab spawn -s demo -p rust -P 3000:3000 -H myhost:10.0.0.1 --network=bridge
+</code></pre>
+</li>
+</ol>
+<h2 id="notes-1"><a class="header" href="#notes-1">Notes</a></h2>
+<ul>
+<li><code>--network=host</code> and port/host mappings may conflict on Docker runtime.</li>
+<li>Overlay mount mode (<code>o</code>) is Podman-only.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-forward-gpg-agent-to-agent-box-containers"><a class="header" href="#how-to-forward-gpg-agent-to-agent-box-containers">How to forward GPG agent to Agent-box containers</a></h1>
+<h2 id="goal-5"><a class="header" href="#goal-5">Goal</a></h2>
+<p>Use host GPG keys/signing from inside container sessions.</p>
+<h2 id="steps-6"><a class="header" href="#steps-6">Steps</a></h2>
+<ol>
+<li>Discover host socket locations:</li>
+</ol>
+<pre><code class="language-bash">gpgconf --list-dirs
+</code></pre>
+<ol start="2">
+<li>Configure overlay mount for <code>~/.gnupg</code> (Podman):</li>
+</ol>
+<pre><code class="language-toml">[runtime.mounts.o]
+home_relative = ["~/.gnupg"]
+
+[runtime.mounts.rw]
+home_relative = [
+  "/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent",
+  "/run/user/1000/gnupg/S.keyboxd:~/.gnupg/S.keyboxd",
+]
+</code></pre>
+<ol start="3">
+<li>Spawn session and test:</li>
+</ol>
+<pre><code class="language-bash">ab spawn -s my-session
+gpg --list-secret-keys
+</code></pre>
+<h2 id="notes-2"><a class="header" href="#notes-2">Notes</a></h2>
+<ul>
+<li>Replace <code>1000</code> with your UID.</li>
+<li>For smartcards, add <code>S.scdaemon</code> socket mapping.</li>
+<li>Docker does not support overlay mounts; Podman is preferred here.</li>
+</ul>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<ul>
+<li>Lock conflicts: remove stale locks (<code>find ~/.gnupg -name '.#lk*' -delete</code>)</li>
+<li>IPC issues: verify socket path with <code>gpg-connect-agent 'getinfo socket_name' /bye</code></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-share-host-nix-store-with-containers"><a class="header" href="#how-to-share-host-nix-store-with-containers">How to share host Nix store with containers</a></h1>
+<h2 id="goal-6"><a class="header" href="#goal-6">Goal</a></h2>
+<p>Use host Nix binaries/store paths from inside Agent-box containers.</p>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<pre><code class="language-toml">[runtime.env]
+# alternatively set in runtime.env as KEY=VALUE string entries
+
+[runtime]
+env = ["NIX_REMOTE=daemon"]
+
+[runtime.mounts.ro]
+absolute = ["/nix/store"]
+
+[runtime.mounts.rw]
+absolute = ["/nix/var/nix/daemon-socket/"]
+</code></pre>
+<h2 id="verify"><a class="header" href="#verify">Verify</a></h2>
+<pre><code class="language-bash">ab spawn -s my-session
+nix --version
+</code></pre>
+<h2 id="notes-3"><a class="header" href="#notes-3">Notes</a></h2>
+<ul>
+<li>Store is mounted read-only.</li>
+<li>Daemon socket mount enables requesting builds/fetches through host daemon.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="explanation"><a class="header" href="#explanation">Explanation</a></h1>
+<p>Explanation pages provide architecture, rationale, and trade-offs.</p>
+<p>Use this section to build mental models, then jump to tutorials/how-to/reference for action-oriented details.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="portal-architecture-overview"><a class="header" href="#portal-architecture-overview">Portal architecture overview</a></h1>
+<p>Portal is a host-side mediation layer for selected capabilities that should not be exposed directly to containers.</p>
+<h2 id="core-model"><a class="header" href="#core-model">Core model</a></h2>
+<ul>
+<li><code>agent-portal-host</code> listens on a Unix socket.</li>
+<li>Clients send MessagePack requests with method payloads.</li>
+<li>Host resolves caller identity from peer credentials.</li>
+<li>Host applies policy (default + per-container overrides).</li>
+<li>Host performs allowed operation and returns structured response.</li>
+</ul>
+<h2 id="why-this-model"><a class="header" href="#why-this-model">Why this model</a></h2>
+<p>Direct host socket passthrough is broad and hard to audit. Portal centralizes control, policy, and observability behind method-level requests.</p>
+<h2 id="implemented-methods"><a class="header" href="#implemented-methods">Implemented methods</a></h2>
+<ul>
+<li><code>ping</code></li>
+<li><code>whoami</code></li>
+<li><code>clipboard.read_image</code></li>
+<li><code>gh.exec</code></li>
+</ul>
+<h2 id="important-constraints"><a class="header" href="#important-constraints">Important constraints</a></h2>
+<ul>
+<li>Prompting happens host-side, never in container wrappers.</li>
+<li>Timeouts and rate limiting are explicit configuration concerns.</li>
+<li>Host binary resolution avoids recursive wrapper execution.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="agent-box-architecture-overview"><a class="header" href="#agent-box-architecture-overview">Agent-box architecture overview</a></h1>
+<p>Agent-box orchestrates safe, disposable execution environments for autonomous coding agents.</p>
+<h2 id="core-responsibilities"><a class="header" href="#core-responsibilities">Core responsibilities</a></h2>
+<ul>
+<li>Discover and resolve repositories under <code>base_repo_dir</code></li>
+<li>Create workspaces (JJ or Git)</li>
+<li>Build container runtime config from layered settings + profiles + CLI overrides</li>
+<li>Spawn containers with deterministic mounts, env, networking, and entrypoint</li>
+</ul>
+<h2 id="layered-configuration-model"><a class="header" href="#layered-configuration-model">Layered configuration model</a></h2>
+<ul>
+<li>Global config defines defaults.</li>
+<li>Repo-local config refines project-specific behavior.</li>
+<li>Profiles provide composable bundles (mounts/env/ports/hosts/context).</li>
+</ul>
+<h2 id="runtime-abstraction"><a class="header" href="#runtime-abstraction">Runtime abstraction</a></h2>
+<p>Agent-box supports Docker and Podman backends through runtime-specific implementation while preserving one CLI surface.</p>
+<h2 id="relationship-to-portal"><a class="header" href="#relationship-to-portal">Relationship to Portal</a></h2>
+<p>Agent-box can mount Portal socket and export <code>AGENT_PORTAL_SOCKET</code>, but Portal remains optional and independently operable.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="agent-box-workflow-internals"><a class="header" href="#agent-box-workflow-internals">Agent-box workflow internals</a></h1>
+<p>This page explains the runtime flow behind <code>ab new</code> and <code>ab spawn</code>.</p>
+<h2 id="repositoryworkspace-model"><a class="header" href="#repositoryworkspace-model">Repository/workspace model</a></h2>
+<ul>
+<li>Source repositories are discovered under <code>base_repo_dir</code>.</li>
+<li>Workspaces are created under <code>workspace_dir</code>.</li>
+<li>Workspace mode is either JJ workspace or Git worktree.</li>
+</ul>
+<h2 id="ab-new-flow"><a class="header" href="#ab-new-flow"><code>ab new</code> flow</a></h2>
+<ol>
+<li>Resolve repository ID (explicit or from current directory).</li>
+<li>Choose workspace type (JJ default, or Git).</li>
+<li>Create workspace for selected session name.</li>
+</ol>
+<h2 id="ab-spawn-flow"><a class="header" href="#ab-spawn-flow"><code>ab spawn</code> flow</a></h2>
+<ol>
+<li>Resolve workspace path (<code>--session</code> mode) or current dir (<code>--local</code>).</li>
+<li>Load and validate layered configuration.</li>
+<li>Resolve profile graph (<code>default_profile</code> + CLI profiles).</li>
+<li>Build runtime-specific container configuration.</li>
+<li>Apply mounts/env/ports/hosts/network options.</li>
+<li>Mount portal socket and set <code>AGENT_PORTAL_SOCKET</code> when portal is enabled.</li>
+<li>Execute selected runtime backend (Podman or Docker).</li>
+</ol>
+<h2 id="path-resolution-notes"><a class="header" href="#path-resolution-notes">Path resolution notes</a></h2>
+<ul>
+<li>Home-relative paths are translated for host/container user homes.</li>
+<li>Relative mount source paths are resolved from current working directory.</li>
+<li>Symlinked paths are expanded to preserve resolution behavior inside container.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="portal-and-agent-box-relationship"><a class="header" href="#portal-and-agent-box-relationship">Portal and Agent-box relationship</a></h1>
+<p>Portal and Agent-box are complementary, not coupled.</p>
+<h2 id="independent-concerns"><a class="header" href="#independent-concerns">Independent concerns</a></h2>
+<ul>
+<li>Agent-box: workspace + container lifecycle orchestration</li>
+<li>Portal: host capability mediation with policy/prompt/audit boundary</li>
+</ul>
+<h2 id="combined-flow"><a class="header" href="#combined-flow">Combined flow</a></h2>
+<p>When used together:</p>
+<ol>
+<li>Agent-box starts container and mounts portal socket.</li>
+<li>Agent-box sets <code>AGENT_PORTAL_SOCKET</code> in container env.</li>
+<li>Wrapper/tool in container calls portal client.</li>
+<li>Portal host enforces policy and executes host operation.</li>
+</ol>
+<h3 id="request-flow-diagram"><a class="header" href="#request-flow-diagram">Request flow diagram</a></h3>
+<p><em>Use scroll/pinch to zoom, drag to pan (Excalidraw interactive viewer).</em></p>
+<pre><code class="language-mermaid">flowchart LR
+  A[Tool in container] --&gt; B[Wrapper binary in container]
+  B --&gt;|MessagePack over Unix socket| C[agent-portal-host on host]
+  C --&gt; D{Policy decision}
+  D --&gt;|allow| E[Execute host capability]
+  D --&gt;|ask| F[Prompt command]
+  F --&gt;|approved| E
+  F --&gt;|denied or timeout| G[Return denial]
+  E --&gt; H[Return stdout stderr bytes and exit code]
+  G --&gt; H
+  H --&gt; B
+  B --&gt; A
+</code></pre>
+<h2 id="why-keep-them-separable"><a class="header" href="#why-keep-them-separable">Why keep them separable</a></h2>
+<ul>
+<li>Portal can serve non-Agent-box environments.</li>
+<li>Agent-box remains useful without Portal methods.</li>
+<li>Integration boundary stays explicit (socket + env), reducing hidden coupling.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="adrs-and-rationale"><a class="header" href="#adrs-and-rationale">ADRs and rationale</a></h1>
+<p>The accepted Portal ADRs are now part of this book.</p>
+<h2 id="adr-list"><a class="header" href="#adr-list">ADR list</a></h2>
+<ol>
+<li><a href="#adr-0001-host-portal-service-for-container-to-host-capabilities">ADR 0001: Host Portal Service for Container-to-Host Capabilities</a></li>
+<li><a href="#adr-0002-transparent-portal-access-via-wrapper-binaries">ADR 0002: Transparent Portal Access via Wrapper Binaries</a></li>
+</ol>
+<p>Read them in order.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="adr-0001-host-portal-service-for-container-to-host-capabilities"><a class="header" href="#adr-0001-host-portal-service-for-container-to-host-capabilities">ADR 0001: Host Portal Service for Container-to-Host Capabilities</a></h1>
+<ul>
+<li>Status: Accepted</li>
+<li>Date: 2026-02-27</li>
+</ul>
+<h2 id="context"><a class="header" href="#context">Context</a></h2>
+<p>We need a secure way for containers to access selected host capabilities (starting with host clipboard image read), with optional user approval similar to xdg-desktop-portal behavior.</p>
+<p>Directly exposing host Wayland/X11 sockets to containers is too broad and does not provide granular per-action approval/policy controls.</p>
+<h2 id="decision"><a class="header" href="#decision">Decision</a></h2>
+<p>Implement a separate host binary (<code>agent-portal-host</code>) that runs as a systemd user service and listens on a Unix socket for container requests.</p>
+<p>An official CLI client (<code>agent-portal-cli</code>) will be provided.</p>
+<h3 id="1-identity-and-container-attribution"><a class="header" href="#1-identity-and-container-attribution">1. Identity and container attribution</a></h3>
+<ul>
+<li>Use Unix socket peer credentials (<code>SO_PEERCRED</code>) to identify the caller process.</li>
+<li>Resolve peer PID + namespace/cgroup metadata back to a Podman container ID.</li>
+<li>Display resolved Podman container identity to the user in approval prompts.</li>
+</ul>
+<h3 id="2-protocol-and-transport"><a class="header" href="#2-protocol-and-transport">2. Protocol and transport</a></h3>
+<ul>
+<li>Use Unix domain sockets.</li>
+<li>Use MessagePack as the on-wire protocol.</li>
+<li>Design protocol to be method-based and extensible for future host capabilities.</li>
+</ul>
+<h3 id="3-user-prompt-integration"><a class="header" href="#3-user-prompt-integration">3. User prompt integration</a></h3>
+<ul>
+<li>Prompting is done via configurable dmenu-style command.</li>
+<li>User can configure a command such as <code>rofi -dmenu ...</code>.</li>
+</ul>
+<h3 id="4-policy-model"><a class="header" href="#4-policy-model">4. Policy model</a></h3>
+<ul>
+<li>Policy is configurable.</li>
+<li>It must support allowing <code>clipboard.read_image</code> without prompting.</li>
+<li>Per-method/per-container policy overrides are supported.</li>
+</ul>
+<h3 id="5-initial-clipboard-scope"><a class="header" href="#5-initial-clipboard-scope">5. Initial clipboard scope</a></h3>
+<ul>
+<li>First capability: <code>clipboard.read_image</code> only.</li>
+<li>Restrict to image MIME types (allowlist).</li>
+<li>Log request decisions and outcomes.</li>
+</ul>
+<h3 id="6-operational-safeguards"><a class="header" href="#6-operational-safeguards">6. Operational safeguards</a></h3>
+<ul>
+<li>Handle multiple containers concurrently.</li>
+<li>Apply concurrency limits.</li>
+<li>Apply per-container and/or global rate limiting.</li>
+<li>Timeouts are configurable; <code>0</code> means no timeout.</li>
+</ul>
+<h3 id="7-configuration-source"><a class="header" href="#7-configuration-source">7. Configuration source</a></h3>
+<ul>
+<li>Reuse <code>~/.agent-box.toml</code> for portal configuration.</li>
+<li>Use a dedicated namespaced section (e.g. <code>[portal]</code>).</li>
+</ul>
+<h3 id="8-data-transfer-strategy"><a class="header" href="#8-data-transfer-strategy">8. Data transfer strategy</a></h3>
+<ul>
+<li>MVP may return image bytes inline in MessagePack with size limits.</li>
+<li>File descriptor passing (<code>SCM_RIGHTS</code>) is acknowledged and can be added later for efficient large payload transfer across the Unix socket boundary.</li>
+</ul>
+<h2 id="consequences"><a class="header" href="#consequences">Consequences</a></h2>
+<h3 id="positive"><a class="header" href="#positive">Positive</a></h3>
+<ul>
+<li>Fine-grained host capability mediation for containers.</li>
+<li>Better security posture than mounting host display/session sockets.</li>
+<li>User-visible approval flow with container attribution.</li>
+<li>Extensible foundation for future portal methods.</li>
+</ul>
+<h3 id="trade-offs"><a class="header" href="#trade-offs">Trade-offs</a></h3>
+<ul>
+<li>Host daemon becomes a sensitive trust boundary and must be hardened.</li>
+<li>Identity resolution from PID/ns/cgroup to Podman ID must be robust.</li>
+<li>Prompt UX and policy defaults affect safety and usability.</li>
+</ul>
+<h2 id="follow-up-implementation-tasks"><a class="header" href="#follow-up-implementation-tasks">Follow-up implementation tasks</a></h2>
+<ol>
+<li>Add <code>agent-portal-host</code> binary skeleton and Unix socket server.</li>
+<li>Implement peer credential extraction and Podman container ID resolution.</li>
+<li>Define MessagePack request/response schema and versioning.</li>
+<li>Implement <code>clipboard.read_image</code> method with MIME allowlist and size limits.</li>
+<li>Add prompt adapter with configurable dmenu-style command.</li>
+<li>Add policy/rate-limit/timeout plumbing sourced from <code>~/.agent-box.toml</code>.</li>
+<li>Add structured audit logging.</li>
+<li>Add <code>agent-portal-cli</code> official CLI client (<code>ping</code>, request method, dump output).</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="adr-0002-transparent-portal-access-via-wrapper-binaries"><a class="header" href="#adr-0002-transparent-portal-access-via-wrapper-binaries">ADR 0002: Transparent Portal Access via Wrapper Binaries</a></h1>
+<ul>
+<li>Status: Accepted</li>
+<li>Date: 2026-02-27</li>
+</ul>
+<h2 id="context-1"><a class="header" href="#context-1">Context</a></h2>
+<p>Portal-based host capability access is safer than direct host socket passthrough, but requires callers to know and integrate a custom API.</p>
+<p>Many agent tools (e.g. <code>pi</code>) already call standard host utilities directly (such as <code>wl-paste</code>). Requiring every agent/tool to learn portal APIs is not transparent and hurts adoption.</p>
+<h2 id="decision-1"><a class="header" href="#decision-1">Decision</a></h2>
+<p>Provide transparent wrapper binaries that mimic standard utility behavior while internally using the portal socket API.</p>
+<p>Initial wrapper:</p>
+<ul>
+<li><code>wl-paste</code> wrapper using portal <code>clipboard.read_image</code>.</li>
+</ul>
+<p>Implementation structure:</p>
+<ul>
+<li>New top-level <code>wrappers/</code> crate for compatibility binaries.</li>
+<li>Shared Rust portal client API in <code>common</code> (<code>portal_client</code>) for direct Rust consumers.</li>
+<li>A generic helper CLI in wrappers (<code>agent-portal-client</code>) for scripts and debugging.</li>
+</ul>
+<h2 id="scope-mvp"><a class="header" href="#scope-mvp">Scope (MVP)</a></h2>
+<p>The wrapper supports the Wayland usage pattern required by <code>pi</code> image paste flow:</p>
+<ol>
+<li><code>wl-paste --list-types</code></li>
+<li><code>wl-paste --type &lt;selected-mime-type&gt; --no-newline</code></li>
+</ol>
+<p>Behavior:</p>
+<ul>
+<li><code>--list-types</code>: returns the currently available clipboard image MIME type exposed by portal.</li>
+<li><code>--type ... --no-newline</code>: returns raw image bytes from portal, enforcing MIME match when requested.</li>
+</ul>
+<h2 id="consequences-1"><a class="header" href="#consequences-1">Consequences</a></h2>
+<h3 id="positive-1"><a class="header" href="#positive-1">Positive</a></h3>
+<ul>
+<li>Agent/tools remain unaware of portal internals.</li>
+<li>Drop-in compatibility improves usability.</li>
+<li>Single mediation point (portal) keeps policy/security controls centralized.</li>
+</ul>
+<h3 id="trade-offs-1"><a class="header" href="#trade-offs-1">Trade-offs</a></h3>
+<ul>
+<li>Wrapper compatibility must track behavior of real utilities.</li>
+<li>Some utility flags may not be supported initially.</li>
+<li>Extra binary indirection adds maintenance surface.</li>
+</ul>
+<h2 id="follow-up"><a class="header" href="#follow-up">Follow-up</a></h2>
+<ul>
+<li>Expand wrapper flag compatibility as needed.</li>
+<li>Add more wrappers for other host capability entry points.</li>
+<li>Consider packaging wrappers on PATH ahead of native tools inside container images.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="security-model"><a class="header" href="#security-model">Security model</a></h1>
+<p>This section explains the security posture of using Portal and Agent-box together or separately.</p>
+<h2 id="threat-reduction-goals"><a class="header" href="#threat-reduction-goals">Threat reduction goals</a></h2>
+<ul>
+<li>Avoid broad host socket exposure to containers.</li>
+<li>Add policy gates to sensitive host operations.</li>
+<li>Provide audit-friendly mediation point.</li>
+</ul>
+<h2 id="trust-boundaries"><a class="header" href="#trust-boundaries">Trust boundaries</a></h2>
+<ul>
+<li><strong>Container</strong>: untrusted or semi-trusted agent execution context.</li>
+<li><strong>Portal host</strong>: trusted broker enforcing method policy.</li>
+<li><strong>Host binaries</strong> (<code>gh</code>, <code>wl-paste</code>): executed only by host broker.</li>
+</ul>
+<h2 id="control-mechanisms"><a class="header" href="#control-mechanisms">Control mechanisms</a></h2>
+<ul>
+<li>Unix socket peer credentials for caller identity.</li>
+<li>Method-level policy modes (<code>allow/ask/deny</code>, <code>gh_exec</code> policy modes).</li>
+<li>Optional prompt-based approval command.</li>
+<li>Concurrency limits, rate limits, and request/prompt timeouts.</li>
+<li>Clipboard MIME allowlist and payload size limit.</li>
+</ul>
+<h2 id="residual-risks"><a class="header" href="#residual-risks">Residual risks</a></h2>
+<ul>
+<li>Misconfigured policy can allow broader access than intended.</li>
+<li>Prompt UX failures can degrade safety or usability.</li>
+<li>Host broker is a sensitive component and must be monitored and updated.</li>
+</ul>
+<h2 id="operational-guidance"><a class="header" href="#operational-guidance">Operational guidance</a></h2>
+<ul>
+<li>Keep policies explicit and minimal.</li>
+<li>Use deny-by-default for high-risk methods where appropriate.</li>
+<li>Enable debug logs during rollout and review outcomes.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="reference"><a class="header" href="#reference">Reference</a></h1>
+<p>Reference pages are factual and scannable.</p>
+<p>Use these when you need exact command flags, config keys, and behavior contracts.</p>
+<div style="break-before: page; page-break-before: always;"></div><!-- AUTO-GENERATED by docs/scripts/generate-cli-reference.nu -->
+<p><em>Do not edit by hand. Regenerate with:</em></p>
+<pre><code class="language-bash">nu docs/scripts/generate-cli-reference.nu
+</code></pre>
+<h1 id="portal-cli-reference"><a class="header" href="#portal-cli-reference">Portal CLI reference</a></h1>
+<h2 id="agent-portal-host"><a class="header" href="#agent-portal-host"><code>agent-portal-host</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p agent-portal --bin agent-portal-host -- --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Host portal service for container capability requests
+
+Usage: agent-portal-host [OPTIONS]
+
+Options:
+      --socket &lt;SOCKET&gt;  Override socket path
+  -h, --help             Print help
+</code></pre>
+<h2 id="agent-portal-cli"><a class="header" href="#agent-portal-cli"><code>agent-portal-cli</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p agent-portal --bin agent-portal-cli -- --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Official CLI client for agent portal host service
+
+Usage: agent-portal-cli [OPTIONS] &lt;COMMAND&gt;
+
+Commands:
+  ping                  
+  whoami                
+  clipboard-read-image  
+  gh-exec               
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+      --socket &lt;SOCKET&gt;  Override socket path
+  -h, --help             Print help
+</code></pre>
+<h2 id="agent-portal-client"><a class="header" href="#agent-portal-client"><code>agent-portal-client</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p agent-wrappers --bin agent-portal-client -- --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Lightweight portal client for wrappers/scripts
+
+Usage: agent-portal-client [OPTIONS] &lt;COMMAND&gt;
+
+Commands:
+  list-types  
+  read-image  
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+      --socket &lt;SOCKET&gt;  
+  -h, --help             Print help
+</code></pre>
+<h2 id="wl-paste-wrapper"><a class="header" href="#wl-paste-wrapper"><code>wl-paste wrapper</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p agent-wrappers --bin wl-paste -- --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Usage: wl-paste [--list-types] [--type &lt;mime&gt;] [--no-newline]
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="portal-messagepack-type-reference"><a class="header" href="#portal-messagepack-type-reference">Portal MessagePack type reference</a></h1>
+<p>Portal uses <a href="https://msgpack.org">MessagePack</a> encoding over a Unix domain socket.</p>
+<p>This page documents request/response pairs by method.</p>
+<h2 id="envelopes"><a class="header" href="#envelopes">Envelopes</a></h2>
+<h3 id="request-envelope"><a class="header" href="#request-envelope">Request envelope</a></h3>
+<pre><code class="language-text">PortalRequest {
+  version: u16,
+  id: u64,
+  method: RequestMethod (flattened)
+}
+</code></pre>
+<ul>
+<li><code>version</code>: protocol version (currently <code>1</code>)</li>
+<li><code>id</code>: client-generated request ID</li>
+<li><code>method</code>: serde-tagged enum (<code>method</code> + optional <code>params</code>)</li>
+</ul>
+<h3 id="response-envelope"><a class="header" href="#response-envelope">Response envelope</a></h3>
+<pre><code class="language-text">PortalResponse {
+  version: u16,
+  id: u64,
+  ok: bool,
+  result: ResponseResult | null,
+  error: PortalError | null
+}
+</code></pre>
+<ul>
+<li><code>id</code> is echoed from request</li>
+<li>if <code>ok = true</code>, <code>result</code> is set</li>
+<li>if <code>ok = false</code>, <code>error</code> is set</li>
+</ul>
+<h3 id="error-object"><a class="header" href="#error-object">Error object</a></h3>
+<pre><code class="language-text">PortalError {
+  code: string,
+  message: string
+}
+</code></pre>
+<p>Common <code>code</code> values: <code>denied</code>, <code>prompt_failed</code>, <code>rate_limited</code>, <code>clipboard_failed</code>, <code>gh_exec_failed</code>, <code>too_busy</code>.</p>
+<h2 id="method-pairs"><a class="header" href="#method-pairs">Method pairs</a></h2>
+<h3 id="ping"><a class="header" href="#ping"><code>ping</code></a></h3>
+<p>Request:</p>
+<pre><code class="language-text">{ "method": "ping" }
+</code></pre>
+<p>Success response (<code>Pong</code>):</p>
+<pre><code class="language-text">{
+  "type": "Pong",
+  "data": {
+    "now_unix_ms": u128
+  }
+}
+</code></pre>
+<h3 id="whoami"><a class="header" href="#whoami"><code>whoami</code></a></h3>
+<p>Request:</p>
+<pre><code class="language-text">{ "method": "whoami" }
+</code></pre>
+<p>Success response (<code>WhoAmI</code>):</p>
+<pre><code class="language-text">{
+  "type": "WhoAmI",
+  "data": {
+    "pid": i32,
+    "uid": u32,
+    "gid": u32,
+    "container_id": string | null
+  }
+}
+</code></pre>
+<h3 id="clipboardread_image"><a class="header" href="#clipboardread_image"><code>clipboard.read_image</code></a></h3>
+<p>Request:</p>
+<pre><code class="language-text">{
+  "method": "clipboard.read_image",
+  "params": {
+    "reason": string | null
+  }
+}
+</code></pre>
+<p>Success response (<code>ClipboardImage</code>):</p>
+<pre><code class="language-text">{
+  "type": "ClipboardImage",
+  "data": {
+    "mime": string,
+    "bytes": binary
+  }
+}
+</code></pre>
+<p>Common error codes for this method:</p>
+<ul>
+<li><code>denied</code></li>
+<li><code>prompt_failed</code></li>
+<li><code>clipboard_failed</code></li>
+<li><code>rate_limited</code></li>
+<li><code>too_busy</code></li>
+</ul>
+<h3 id="ghexec"><a class="header" href="#ghexec"><code>gh.exec</code></a></h3>
+<p>Request:</p>
+<pre><code class="language-text">{
+  "method": "gh.exec",
+  "params": {
+    "argv": [string, ...],
+    "reason": string | null,
+    "require_approval": bool
+  }
+}
+</code></pre>
+<p>Success response (<code>GhExec</code>):</p>
+<pre><code class="language-text">{
+  "type": "GhExec",
+  "data": {
+    "exit_code": i32,
+    "stdout": binary,
+    "stderr": binary
+  }
+}
+</code></pre>
+<p>Common error codes for this method:</p>
+<ul>
+<li><code>denied</code></li>
+<li><code>prompt_failed</code></li>
+<li><code>gh_exec_failed</code></li>
+<li><code>rate_limited</code></li>
+<li><code>too_busy</code></li>
+</ul>
+<h2 id="serialization-notes"><a class="header" href="#serialization-notes">Serialization notes</a></h2>
+<ul>
+<li>Request enum tags: <code>method</code> + <code>params</code></li>
+<li>Response enum tags: <code>type</code> + <code>data</code></li>
+<li><code>PortalRequest.method</code> is flattened into request envelope</li>
+<li>Rust source of truth: <code>common/src/portal.rs</code></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="portal-configuration-reference"><a class="header" href="#portal-configuration-reference">Portal configuration reference</a></h1>
+<p>Portal config lives under <code>[portal]</code> in <code>~/.agent-box.toml</code>.</p>
+<h2 id="top-level-keys"><a class="header" href="#top-level-keys">Top-level keys</a></h2>
+<ul>
+<li><code>enabled</code> (bool, default: <code>true</code>)</li>
+<li><code>socket_path</code> (string, default: <code>/run/user/&lt;uid&gt;/agent-portal/portal.sock</code>)</li>
+<li><code>prompt_command</code> (string|null, default: unset)</li>
+<li><code>timeouts.request_ms</code> (u64, default: <code>0</code> = no timeout)</li>
+<li><code>timeouts.prompt_ms</code> (u64, default: <code>0</code> = no timeout)</li>
+<li><code>limits.max_inflight</code> (usize, default: <code>32</code>)</li>
+<li><code>limits.prompt_queue</code> (usize, default: <code>64</code>)</li>
+<li><code>limits.rate_per_minute</code> (u32, default: <code>60</code>)</li>
+<li><code>limits.rate_burst</code> (u32, default: <code>10</code>)</li>
+<li><code>limits.max_clipboard_bytes</code> (usize, default: <code>20971520</code>)</li>
+<li><code>clipboard.allowed_mime</code> (array of strings, default: <code>image/png</code>, <code>image/jpeg</code>, <code>image/webp</code>)</li>
+</ul>
+<h2 id="policy-defaults"><a class="header" href="#policy-defaults">Policy defaults</a></h2>
+<p><code>[portal.policy.defaults]</code></p>
+<ul>
+<li><code>clipboard_read_image</code>: <code>allow | ask | deny</code> (default: <code>allow</code>)</li>
+<li><code>gh_exec</code>: <code>ask_for_writes | ask_for_all | ask_for_none | deny_all</code> (default: <code>ask_for_writes</code>)
+<ul>
+<li>aliases accepted by config parser:
+<ul>
+<li><code>allow</code> -&gt; <code>ask_for_none</code></li>
+<li><code>ask</code> -&gt; <code>ask_for_writes</code></li>
+<li><code>deny</code> -&gt; <code>deny_all</code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="per-container-policy-override"><a class="header" href="#per-container-policy-override">Per-container policy override</a></h2>
+<p><code>[portal.policy.containers."&lt;container-id&gt;"]</code></p>
+<p>Container ID is resolved from peer process cgroup metadata.</p>
+<p>Example:</p>
+<pre><code class="language-toml">[portal.policy.containers."3f7a1d5c2b8e"]
+clipboard_read_image = "deny"
+gh_exec = "ask_for_all"
+</code></pre>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<pre><code class="language-toml">[portal]
+enabled = true
+socket_path = "/run/user/1000/agent-portal/portal.sock"
+prompt_command = "rofi -dmenu -p 'agent-portal'"
+
+[portal.timeouts]
+request_ms = 5000
+prompt_ms = 15000
+
+[portal.limits]
+max_inflight = 32
+prompt_queue = 64
+rate_per_minute = 60
+rate_burst = 10
+max_clipboard_bytes = 20971520
+
+[portal.clipboard]
+allowed_mime = ["image/png", "image/jpeg", "image/webp"]
+
+[portal.policy.defaults]
+clipboard_read_image = "allow"
+gh_exec = "ask_for_writes"
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="portal-wrapper-contract-reference"><a class="header" href="#portal-wrapper-contract-reference">Portal wrapper contract reference</a></h1>
+<p>This page describes behavior expected from compatibility wrappers in <code>wrappers/</code>.</p>
+<h2 id="general-contract"><a class="header" href="#general-contract">General contract</a></h2>
+<ul>
+<li>Wrappers expose familiar command names/flags.</li>
+<li>Wrappers do <strong>not</strong> call host capability directly inside container.</li>
+<li>Wrappers call Portal methods via Unix socket.</li>
+<li>Wrappers forward output as tool-compatible stdout/stderr.</li>
+<li>Wrapper process exit code matches operation result semantics.</li>
+</ul>
+<h2 id="socket-resolution-order"><a class="header" href="#socket-resolution-order">Socket resolution order</a></h2>
+<ol>
+<li><code>AGENT_PORTAL_SOCKET</code> environment variable</li>
+<li><code>~/.agent-box.toml</code> -&gt; <code>[portal].socket_path</code></li>
+<li>Built-in default <code>/run/user/&lt;uid&gt;/agent-portal/portal.sock</code></li>
+</ol>
+<h2 id="wl-paste-wrapper-contract"><a class="header" href="#wl-paste-wrapper-contract"><code>wl-paste</code> wrapper contract</a></h2>
+<ul>
+<li><code>--list-types</code> returns a single available image MIME type selected by portal policy.</li>
+<li><code>--type &lt;mime&gt; --no-newline</code> writes raw image bytes.</li>
+<li>If requested MIME does not match available MIME, wrapper errors.</li>
+</ul>
+<h2 id="gh-wrapper-contract"><a class="header" href="#gh-wrapper-contract"><code>gh</code> wrapper contract</a></h2>
+<ul>
+<li>Forwards argv as <code>gh.exec</code> request payload.</li>
+<li>Includes a human-readable <code>reason</code> string for prompt/audit context.</li>
+<li>Does not prompt in-container.</li>
+<li>Prints portal-returned stdout/stderr and exits with portal-returned exit code.</li>
+</ul>
+<h2 id="host-side-execution-model"><a class="header" href="#host-side-execution-model">Host-side execution model</a></h2>
+<ul>
+<li>Policy decisions and prompts are enforced by <code>agent-portal-host</code>.</li>
+<li>Host service resolves host-native binaries (<code>gh</code>, <code>wl-paste</code>) to avoid wrapper recursion.</li>
+</ul>
+<h2 id="versioning"><a class="header" href="#versioning">Versioning</a></h2>
+<p>Current request/response protocol version field is <code>1</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div><!-- AUTO-GENERATED by docs/scripts/generate-cli-reference.nu -->
+<p><em>Do not edit by hand. Regenerate with:</em></p>
+<pre><code class="language-bash">nu docs/scripts/generate-cli-reference.nu
+</code></pre>
+<h1 id="agent-box-cli-reference"><a class="header" href="#agent-box-cli-reference">Agent-box CLI reference</a></h1>
+<h2 id="ab"><a class="header" href="#ab"><code>ab</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p ab -- --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Agent Box - Git repository management tool
+
+Usage: ab &lt;COMMAND&gt;
+
+Commands:
+  info   Show repository information and list workspaces
+  new    Create a new workspace (jj or git worktree)
+  spawn  Spawn a new container for a workspace
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+</code></pre>
+<h2 id="ab-new"><a class="header" href="#ab-new"><code>ab new</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p ab -- new --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Create a new workspace (jj or git worktree)
+
+Usage: ab new [OPTIONS] [REPO_NAME]
+
+Arguments:
+  [REPO_NAME]  Repository name (defaults to current directory's git repo)
+
+Options:
+  -s, --session &lt;SESSION&gt;  Session/workspace name
+      --git                Create a git worktree
+      --jj                 Create a jj workspace
+  -h, --help               Print help
+</code></pre>
+<h2 id="ab-spawn"><a class="header" href="#ab-spawn"><code>ab spawn</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p ab -- spawn --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Spawn a new container for a workspace
+
+Usage: ab spawn [OPTIONS]
+
+Options:
+  -s, --session &lt;SESSION&gt;        Session name (mutually exclusive with --local)
+  -l, --local                    Use current directory as both source and workspace (mutually exclusive with --session)
+  -r, --repo &lt;REPO&gt;              Repository identifier (defaults to current directory's git repo)
+  -e, --entrypoint &lt;ENTRYPOINT&gt;  Override entrypoint from config
+  -c, --command &lt;COMMAND&gt;        Command to run in the container (passed to entrypoint)
+      --git                      
+      --jj                       
+  -n, --new                      Create workspace if it doesn't exist (equivalent to running `ab new` first)
+      --ro                       Mount source directory as read-only
+  -m, --mount &lt;MOUNT&gt;            Additional mount (home-relative). Format: [MODE:]PATH or [MODE:]SRC:DST MODE is ro, rw, or o (default: rw). Paths use ~ for home directory. Relative host source paths are resolved against the current working directory. Example: -m ~/.config/git -m ro:~/secrets -m rw:~/data:/app/data -m ../pierre
+  -M, --Mount &lt;MOUNT&gt;            Additional mount (absolute). Format: [MODE:]PATH or [MODE:]SRC:DST MODE is ro, rw, or o (default: rw). Same path used on host and container. Relative host source paths are resolved against the current working directory. Example: -M /nix/store -M ro:/etc/hosts -M ../shared
+  -p, --profile &lt;PROFILE&gt;        Additional profiles to apply (can be specified multiple times). Profiles are applied after the default_profile (if set) and in order specified. Example: -p git -p rust
+  -P, --port &lt;PORT&gt;              Port mapping to expose (can be specified multiple times). Format: [HOST_IP:]HOST_PORT:CONTAINER_PORT or just CONTAINER_PORT. Example: -P 8080:8080 -P 3000 -P 127.0.0.1:9090:9090
+  -H, --add-host &lt;HOST:IP&gt;       Custom host-to-IP mapping added to /etc/hosts in the container (can be specified multiple times). Format: HOST:IP  (use `host-gateway` as IP to resolve to the host machine). Example: -H myhost:192.168.1.1 -H host.docker.internal:host-gateway
+      --no-skip                  Don't skip mounts that are already covered by parent mounts
+      --network &lt;MODE&gt;           Network mode to use (e.g. host, bridge, none, or a container name). Passed directly as --network=&lt;MODE&gt; to the container runtime
+  -h, --help                     Print help
+</code></pre>
+<h2 id="ab-info"><a class="header" href="#ab-info"><code>ab info</code></a></h2>
+<p>Command:</p>
+<pre><code class="language-bash">cargo run -q -p ab -- info --help
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-text">Show repository information and list workspaces
+
+Usage: ab info
+
+Options:
+  -h, --help  Print help
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="agent-box-configuration-reference"><a class="header" href="#agent-box-configuration-reference">Agent-box configuration reference</a></h1>
+<p>Main configuration file: <code>~/.agent-box.toml</code></p>
+<h2 id="layered-configuration"><a class="header" href="#layered-configuration">Layered configuration</a></h2>
+<p>Load order:</p>
+<ol>
+<li><code>~/.agent-box.toml</code> (required)</li>
+<li><code>{git-root}/.agent-box.toml</code> (optional)</li>
+</ol>
+<p>Merge behavior:</p>
+<ul>
+<li>Scalars: repo-local overrides global</li>
+<li>Arrays: values are appended</li>
+<li>Objects: merged recursively</li>
+</ul>
+<h2 id="root-keys"><a class="header" href="#root-keys">Root keys</a></h2>
+<ul>
+<li><code>workspace_dir</code> (path): base directory for generated workspaces</li>
+<li><code>base_repo_dir</code> (path): base directory for source repositories</li>
+<li><code>default_profile</code> (string|null): profile automatically applied to <code>ab spawn</code></li>
+<li><code>profiles</code> (table): named profile definitions</li>
+<li><code>runtime</code> (table): runtime/backend settings</li>
+<li><code>context</code> (string): root context content</li>
+<li><code>context_path</code> (string, default <code>/tmp/context</code>): in-container path for context file</li>
+<li><code>portal</code> (table): portal host integration settings</li>
+</ul>
+<p>All paths support <code>~</code> expansion.</p>
+<h2 id="runtime"><a class="header" href="#runtime"><code>[runtime]</code></a></h2>
+<ul>
+<li><code>backend</code> (string, default <code>podman</code>): <code>podman</code> or <code>docker</code></li>
+<li><code>image</code> (string): container image</li>
+<li><code>entrypoint</code> (shell-style string): parsed to argv</li>
+<li><code>env</code> (array of <code>KEY=VALUE</code>)</li>
+<li><code>env_passthrough</code> (array of variable names)</li>
+<li><code>ports</code> (array of <code>-p</code> compatible port mappings)</li>
+<li><code>hosts</code> (array of <code>HOST:IP</code> entries)</li>
+<li><code>skip_mounts</code> (array of glob patterns)</li>
+<li><code>mounts</code> (table): <code>ro</code>, <code>rw</code>, and <code>o</code> mount categories</li>
+</ul>
+<h2 id="mount-table-shape"><a class="header" href="#mount-table-shape">Mount table shape</a></h2>
+<p>Each of <code>runtime.mounts.ro</code>, <code>runtime.mounts.rw</code>, and <code>runtime.mounts.o</code> has:</p>
+<ul>
+<li><code>absolute</code> (array of strings)</li>
+<li><code>home_relative</code> (array of strings)</li>
+</ul>
+<p>Mount modes:</p>
+<ul>
+<li><code>ro</code>: read-only</li>
+<li><code>rw</code>: read-write</li>
+<li><code>o</code>: overlay (Podman only)</li>
+</ul>
+<h2 id="cli-additional-mount-syntax-ab-spawn"><a class="header" href="#cli-additional-mount-syntax-ab-spawn">CLI additional mount syntax (<code>ab spawn</code>)</a></h2>
+<ul>
+<li><code>[MODE:]PATH</code></li>
+<li><code>[MODE:]SRC:DST</code></li>
+</ul>
+<p><code>MODE</code> values: <code>ro</code>, <code>rw</code>, <code>o</code> (default: <code>rw</code>).</p>
+<p>Examples:</p>
+<ul>
+<li><code>-m ~/data</code></li>
+<li><code>-m ro:~/.config/git</code></li>
+<li><code>-m rw:~/src:/app/src</code></li>
+<li><code>-M /nix/store</code></li>
+<li><code>-M o:/tmp/cache</code></li>
+</ul>
+<h2 id="environment-passthrough"><a class="header" href="#environment-passthrough">Environment passthrough</a></h2>
+<p><code>env_passthrough</code> copies host env values into the container at spawn time.</p>
+<p>Example:</p>
+<pre><code class="language-toml">[runtime]
+env_passthrough = ["PATH", "SSH_AUTH_SOCK", "TERM"]
+</code></pre>
+<h2 id="context-composition"><a class="header" href="#context-composition">Context composition</a></h2>
+<p>Context is built in this order:</p>
+<ol>
+<li>Root <code>context</code></li>
+<li>Each resolved profile <code>context</code> in profile resolution order</li>
+</ol>
+<p>Values are joined with newlines and written to a temp file mounted at <code>context_path</code>.</p>
+<h2 id="port-mappings"><a class="header" href="#port-mappings">Port mappings</a></h2>
+<p>Port values follow container runtime <code>-p</code> syntax:</p>
+<ul>
+<li><code>HOST_PORT:CONTAINER_PORT</code></li>
+<li><code>HOST_IP:HOST_PORT:CONTAINER_PORT</code></li>
+<li><code>CONTAINER_PORT</code></li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-toml">[runtime]
+ports = ["8080:8080", "127.0.0.1:9090:9090", "3000"]
+</code></pre>
+<h2 id="host-entries"><a class="header" href="#host-entries">Host entries</a></h2>
+<p><code>hosts</code> entries are passed as runtime <code>--add-host</code> values.</p>
+<p>Example:</p>
+<pre><code class="language-toml">[runtime]
+hosts = ["host.docker.internal:host-gateway", "myhost:10.0.0.1"]
+</code></pre>
+<h2 id="network-mode"><a class="header" href="#network-mode">Network mode</a></h2>
+<p>CLI flag: <code>ab spawn --network=MODE</code></p>
+<p>Typical values:</p>
+<ul>
+<li><code>host</code></li>
+<li><code>bridge</code></li>
+<li><code>none</code></li>
+<li>runtime-specific named network</li>
+</ul>
+<p>On Docker, <code>--network=host</code> conflicts with published ports and add-host options.</p>
+<h2 id="runtime-backend-differences"><a class="header" href="#runtime-backend-differences">Runtime backend differences</a></h2>
+<ul>
+<li>Podman: supports overlay mount mode (<code>o</code>) and keep-id user namespace behavior</li>
+<li>Docker: no overlay mounts; uses direct user mapping</li>
+</ul>
+<h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
+<p>Profiles are reusable config fragments you can layer on top of runtime defaults.</p>
+<p>Profile table: <code>[profiles.NAME]</code></p>
+<p>Supported keys:</p>
+<ul>
+<li><code>extends</code> (array of profile names)</li>
+<li><code>mounts</code> (same shape as runtime mounts)</li>
+<li><code>env</code> (array of <code>KEY=VALUE</code>)</li>
+<li><code>env_passthrough</code> (array of variable names)</li>
+<li><code>ports</code> (array of port mapping strings)</li>
+<li><code>hosts</code> (array of <code>HOST:IP</code> entries)</li>
+<li><code>context</code> (string)</li>
+</ul>
+<h3 id="profile-inheritance-extends"><a class="header" href="#profile-inheritance-extends">Profile inheritance (<code>extends</code>)</a></h3>
+<p>A profile can inherit from one or more profiles using <code>extends</code>.
+Inherited values are merged using the same layered rules described above:</p>
+<ul>
+<li>Scalars override</li>
+<li>Arrays append</li>
+<li>Objects merge recursively</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-toml">[profiles.base]
+env = ["RUST_BACKTRACE=1"]
+mounts.rw.home_relative = ["~/.cargo"]
+
+[profiles.gpg]
+mounts.rw.absolute = ["/run/user/1000/gnupg/S.gpg-agent:~/.gnupg/S.gpg-agent"]
+
+[profiles.dev]
+extends = ["base", "gpg"]
+ports = ["8080:8080"]
+</code></pre>
+<h3 id="activation-order"><a class="header" href="#activation-order">Activation order</a></h3>
+<p>Final runtime config is resolved in this order:</p>
+<ol>
+<li>root runtime config (<code>[runtime]</code>)</li>
+<li><code>default_profile</code> (if configured)</li>
+<li>each CLI profile flag in order (<code>ab spawn -p one -p two</code>)</li>
+</ol>
+<p>That means later profiles can override scalar values from earlier layers, while arrays continue to append.</p>
+<h3 id="typical-usage"><a class="header" href="#typical-usage">Typical usage</a></h3>
+<p>Set a baseline profile for daily use:</p>
+<pre><code class="language-toml">default_profile = "base"
+</code></pre>
+<p>Then add task-specific profiles per spawn:</p>
+<pre><code class="language-bash">ab spawn -r myrepo -s mysession -p rust -p gpg
+</code></pre>
+<h2 id="validation-and-inspection"><a class="header" href="#validation-and-inspection">Validation and inspection</a></h2>
+<p>Validate config:</p>
+<pre><code class="language-bash">ab dbg validate
+</code></pre>
+<p>Preview merged config/profile resolution:</p>
+<pre><code class="language-bash">ab dbg resolve
+ab dbg resolve -p rust -p gpg
+</code></pre>
+<h2 id="portal-integration"><a class="header" href="#portal-integration">Portal integration</a></h2>
+<p>Portal config is defined under <code>[portal]</code> in the same file.</p>
+<p>See <a href="#portal-configuration-reference">Portal config</a> and <a href="#portal-wrapper-contract-reference">Portal wrapper contract</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="agent-box-requirements"><a class="header" href="#agent-box-requirements">Agent-box requirements</a></h1>
+<h2 id="runtime-requirements"><a class="header" href="#runtime-requirements">Runtime requirements</a></h2>
+<ul>
+<li>Rust toolchain (workspace uses Rust edition 2024)</li>
+<li>Git</li>
+<li>Jujutsu (<code>jj</code>) for JJ workspace flows</li>
+<li>Docker or Podman for container execution</li>
+</ul>
+<h2 id="portal-related-requirements"><a class="header" href="#portal-related-requirements">Portal-related requirements</a></h2>
+<ul>
+<li><code>wl-paste</code> available on host when using portal clipboard methods</li>
+<li><code>agent-portal-host</code> running for wrapper/API operations</li>
+</ul>
+<h2 id="optional-tooling"><a class="header" href="#optional-tooling">Optional tooling</a></h2>
+<ul>
+<li>Nix / flakes for reproducible development shell workflows</li>
+<li>Nushell to run CLI reference generation script:
+<ul>
+<li><code>nu docs/scripts/generate-cli-reference.nu</code></li>
+</ul>
+</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="environment-variables-reference"><a class="header" href="#environment-variables-reference">Environment variables reference</a></h1>
+<h2 id="portal-related"><a class="header" href="#portal-related">Portal-related</a></h2>
+<ul>
+<li>
+<p><code>AGENT_PORTAL_SOCKET</code></p>
+<ul>
+<li>Used by portal clients/wrappers to select socket path.</li>
+<li>Resolution priority is env var first, then config/default.</li>
+</ul>
+</li>
+<li>
+<p><code>AGENT_PORTAL_HOST_WL_PASTE</code></p>
+<ul>
+<li>Used by <code>agent-portal-host</code> to override host <code>wl-paste</code> binary path.</li>
+</ul>
+</li>
+<li>
+<p><code>AGENT_PORTAL_HOST_GH</code></p>
+<ul>
+<li>Used by <code>agent-portal-host</code> to override host <code>gh</code> binary path.</li>
+</ul>
+</li>
+</ul>
+<h2 id="logging"><a class="header" href="#logging">Logging</a></h2>
+<ul>
+<li><code>RUST_LOG</code>
+<ul>
+<li>Controls tracing filter for <code>agent-portal-host</code> and other Rust binaries using tracing subscriber.</li>
+</ul>
+</li>
+</ul>
+<h2 id="runtime-passthrough"><a class="header" href="#runtime-passthrough">Runtime passthrough</a></h2>
+<p>Variables listed in <code>[runtime].env_passthrough</code> are copied from host into container at spawn time.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="glossary"><a class="header" href="#glossary">Glossary</a></h1>
+<ul>
+<li><strong>Agent-box</strong>: CLI (<code>ab</code>) that manages repository workspaces and container sessions.</li>
+<li><strong>Portal</strong>: host daemon + API/CLI for mediated host capability access.</li>
+<li><strong>Wrapper</strong>: compatibility binary that presents familiar command behavior while forwarding to Portal.</li>
+<li><strong>Session</strong>: named workspace instance used by Agent-box (<code>ab new</code>/<code>ab spawn</code>).</li>
+<li><strong>Workspace type</strong>: JJ workspace or Git worktree.</li>
+<li><strong>Policy decision</strong>: allow/ask/deny behavior for portal methods.</li>
+<li><strong>Policy mode (<code>gh_exec</code>)</strong>: ask_for_writes, ask_for_all, ask_for_none, deny_all.</li>
+<li><strong>Prompt command</strong>: configurable dmenu-style command invoked by portal host for ask-mode approvals.</li>
+<li><strong>Container override policy</strong>: per-container policy table keyed by container ID.</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

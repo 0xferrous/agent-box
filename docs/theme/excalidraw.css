@@ -1,0 +1,389 @@
+/**
+ * mdbook-excalidraw styles
+ * Styles for Excalidraw diagram containers and controls
+ */
+
+/* Main container */
+.excalidraw-wrapper {
+    margin: 2rem 0;
+    border: 1px solid var(--sidebar-bg, #ddd);
+    border-radius: 8px;
+    overflow: hidden;
+    background: transparent;
+    position: relative;
+}
+
+/* Diagram container */
+.excalidraw-container {
+    padding: 2rem;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: transparent;
+    overflow: auto;
+}
+
+/* Zoom wrapper */
+.excalidraw-zoom-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: transform 0.2s ease;
+    transform-origin: center center;
+}
+
+/* Zoom controls - positioned in top-right corner */
+.excalidraw-zoom-controls {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.5rem;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+    z-index: 10;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.excalidraw-zoom-controls:hover {
+    opacity: 1;
+}
+
+.excalidraw-zoom-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    color: var(--fg, #333);
+}
+
+.excalidraw-zoom-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.25);
+}
+
+.excalidraw-zoom-btn:active {
+    transform: scale(0.95);
+}
+
+.excalidraw-zoom-level {
+    min-width: 38px;
+    text-align: center;
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--fg, #555);
+    user-select: none;
+}
+
+/* SVG preview */
+.excalidraw-svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Loading state */
+.excalidraw-loading {
+    padding: 3rem;
+    text-align: center;
+    color: var(--fg, #333);
+    font-style: italic;
+}
+
+.excalidraw-loading::before {
+    content: '⏳ ';
+    font-size: 1.5em;
+}
+
+/* Error state */
+.excalidraw-error {
+    padding: 1.5rem;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    color: #856404;
+}
+
+.excalidraw-error strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #dc3545;
+}
+
+.excalidraw-error pre {
+    background: #fff;
+    padding: 0.75rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+    font-size: 0.875rem;
+}
+
+.excalidraw-error details {
+    margin-top: 1rem;
+}
+
+.excalidraw-error summary {
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+}
+
+.excalidraw-error summary:hover {
+    text-decoration: underline;
+}
+
+/* Mermaid preview */
+.mermaid-preview {
+    padding: 1rem;
+    background: var(--code-bg, #f8f9fa);
+    border: 1px solid var(--sidebar-bg, #ddd);
+    border-radius: 4px;
+    font-family: 'Source Code Pro', Consolas, monospace;
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+/* Source code toggle */
+.excalidraw-source {
+    border-top: 1px solid var(--sidebar-bg, #ddd);
+    padding: 0.5rem;
+    background: transparent;
+}
+
+.excalidraw-source summary {
+    cursor: pointer;
+    font-weight: 400;
+    font-size: 13px;
+    color: var(--fg, #666);
+    user-select: none;
+    padding: 0.25rem 0.5rem;
+    list-style: none;
+}
+
+.excalidraw-source summary::-webkit-details-marker {
+    display: none;
+}
+
+.excalidraw-source summary::before {
+    content: '▶ ';
+    display: inline-block;
+    transition: transform 0.15s;
+    font-size: 10px;
+}
+
+.excalidraw-source[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.excalidraw-source summary:hover {
+    color: var(--fg, #333);
+}
+
+.excalidraw-source pre {
+    margin: 0.5rem 0 0 0;
+    padding: 0.5rem;
+    background: var(--code-bg, #f5f5f5);
+    border: 1px solid var(--sidebar-bg, #ddd);
+    border-radius: 2px;
+    overflow-x: auto;
+    max-width: 600px;
+}
+
+.excalidraw-source code {
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+/* Modal */
+.excalidraw-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 1rem;
+}
+
+.excalidraw-modal-content {
+    background: var(--bg, #fff);
+    border-radius: 8px;
+    max-width: 800px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.excalidraw-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--sidebar-bg, #ddd);
+}
+
+.excalidraw-modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--fg, #333);
+}
+
+.excalidraw-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--fg, #666);
+    padding: 0;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.excalidraw-modal-close:hover {
+    background: var(--sidebar-bg, #f0f0f0);
+}
+
+.excalidraw-modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.excalidraw-modal-body pre {
+    background: var(--code-bg, #f8f9fa);
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    border: 1px solid var(--sidebar-bg, #ddd);
+}
+
+.excalidraw-modal-body code {
+    font-family: 'Source Code Pro', Consolas, 'Ubuntu Mono', Menlo, 'DejaVu Sans Mono', monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+    .excalidraw-wrapper {
+        border-color: #444;
+    }
+
+    .excalidraw-loading {
+        color: #e0e0e0;
+    }
+
+    .excalidraw-source {
+        background: transparent;
+    }
+
+    .excalidraw-source summary {
+        color: #aaa;
+    }
+
+    .excalidraw-source summary:hover {
+        color: #e0e0e0;
+    }
+
+    .excalidraw-source pre {
+        background: #2a2a2a;
+        border-color: #444;
+    }
+
+    .excalidraw-modal-content {
+        background: #1a1a1a;
+    }
+
+    .excalidraw-modal-header {
+        border-color: #444;
+    }
+
+    .excalidraw-modal-close:hover {
+        background: #2a2a2a;
+    }
+
+    /* Dark mode zoom controls */
+    .excalidraw-zoom-controls {
+        background: rgba(50, 50, 50, 0.7);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .excalidraw-zoom-btn {
+        color: #e0e0e0;
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .excalidraw-zoom-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .excalidraw-zoom-level {
+        color: #e0e0e0;
+    }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .excalidraw-container {
+        padding: 1rem;
+    }
+
+    .excalidraw-modal {
+        padding: 0;
+    }
+
+    .excalidraw-modal-content {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.excalidraw-modal {
+    animation: fadeIn 0.2s ease;
+}

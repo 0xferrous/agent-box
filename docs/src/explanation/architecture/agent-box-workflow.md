@@ -1,0 +1,31 @@
+# Agent-box workflow internals
+
+This page explains the runtime flow behind `ab new` and `ab spawn`.
+
+## Repository/workspace model
+
+- Source repositories are discovered under `base_repo_dir`.
+- Workspaces are created under `workspace_dir`.
+- Workspace mode is either JJ workspace or Git worktree.
+
+## `ab new` flow
+
+1. Resolve repository ID (explicit or from current directory).
+2. Choose workspace type (JJ default, or Git).
+3. Create workspace for selected session name.
+
+## `ab spawn` flow
+
+1. Resolve workspace path (`--session` mode) or current dir (`--local`).
+2. Load and validate layered configuration.
+3. Resolve profile graph (`default_profile` + CLI profiles).
+4. Build runtime-specific container configuration.
+5. Apply mounts/env/ports/hosts/network options.
+6. Mount portal socket and set `AGENT_PORTAL_SOCKET` when portal is enabled.
+7. Execute selected runtime backend (Podman or Docker).
+
+## Path resolution notes
+
+- Home-relative paths are translated for host/container user homes.
+- Relative mount source paths are resolved from current working directory.
+- Symlinked paths are expanded to preserve resolution behavior inside container.

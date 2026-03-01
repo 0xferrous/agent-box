@@ -10,6 +10,18 @@
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        mdbook-excalidraw = pkgs.rustPlatform.buildRustPackage rec {
+          pname = "mdbook-excalidraw";
+          version = "0.1.0";
+          src = pkgs.fetchFromGitHub {
+            # inherit pname version;
+            owner = "peachycloudsecurity";
+            repo = "mdbook-excalidraw";
+            rev = "2d8f07905f57d1c460ccb9f7279af4f4999b9ee2";
+            sha256 = "sha256-Sf2cWaoZ3tOjRWaOp898RME6+7uLYv9gb7RTsg76ETU=";
+          };
+          cargoHash = "sha256-h+sunASiueLa1LZNfTUZlidS1KVh9orxFnTpCcf3s/Y=";
+        };
 
         wrappers = pkgs.rustPlatform.buildRustPackage {
           pname = "agent-wrappers";
@@ -45,6 +57,7 @@
         packages = {
           wrappers = wrappers;
           portal = portal;
+          mdbook-excalidraw = pkgs.mdbook-excalidraw;
           default = wrappers;
         };
 
@@ -71,6 +84,10 @@
             # Build dependencies
             pkg-config
             openssl
+
+            # Documentation tools
+            mdbook
+            mdbook-excalidraw
 
             # Additional tools
             git

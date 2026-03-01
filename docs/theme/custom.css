@@ -1,0 +1,11 @@
+/* Tighter section spacing than mdBook defaults */
+h2,
+h3 {
+  margin-block-start: 1.25em;
+}
+
+/* Mermaid readability */
+.mermaid {
+  overflow: auto;
+  padding: 0.25rem;
+}

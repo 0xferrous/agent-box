@@ -1,0 +1,19 @@
+[book]
+title = "Agent-box & Portal Docs"
+authors = ["agent-box maintainers"]
+description = "User documentation for Agent-box and Portal"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "ayu"
+# additional-css = ["theme/custom.css", "theme/excalidraw.css"]
+# additional-js = ["mermaid.min.js", "mermaid-init.js", "theme/excalidraw.js"]
+
+[preprocessor]
+
+# [preprocessor.excalidraw]
+# command = "mdbook-excalidraw"
