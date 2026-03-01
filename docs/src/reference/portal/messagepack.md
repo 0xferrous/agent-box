@@ -159,6 +159,43 @@ Common error codes for this method:
 - `rate_limited`
 - `too_busy`
 
+### `exec`
+
+Request:
+
+```text
+{
+  "method": "exec",
+  "params": {
+    "argv": [string, ...],
+    "reason": string | null,
+    "cwd": string | null,
+    "env": { string: string, ... } | null
+  }
+}
+```
+
+Success response (`Exec`):
+
+```text
+{
+  "type": "Exec",
+  "data": {
+    "exit_code": i32,
+    "stdout": binary,
+    "stderr": binary
+  }
+}
+```
+
+Common error codes for this method:
+
+- `denied`
+- `prompt_failed`
+- `exec_failed`
+- `rate_limited`
+- `too_busy`
+
 ## Serialization notes
 
 - Request enum tags: `method` + `params`

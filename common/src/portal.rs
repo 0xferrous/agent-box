@@ -211,6 +211,13 @@ pub enum RequestMethod {
         reason: Option<String>,
         require_approval: bool,
     },
+    #[serde(rename = "exec")]
+    Exec {
+        argv: Vec<String>,
+        reason: Option<String>,
+        cwd: Option<String>,
+        env: Option<HashMap<String, String>>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -226,6 +233,13 @@ pub struct PortalResponse {
     pub ok: bool,
     pub result: Option<ResponseResult>,
     pub error: Option<PortalError>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExecResult {
+    pub exit_code: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -248,6 +262,10 @@ pub enum ResponseResult {
         exit_code: i32,
         stdout: Vec<u8>,
         stderr: Vec<u8>,
+    },
+    Exec {
+        #[serde(flatten)]
+        result: ExecResult,
     },
 }
 
@@ -386,5 +404,99 @@ mod tests {
         assert_eq!(err.id, 7);
         assert!(err.result.is_none());
         assert_eq!(err.error.as_ref().map(|e| e.code.as_str()), Some("denied"));
+    }
+
+    #[test]
+    fn exec_request_constructs_correctly() {
+        let req = RequestMethod::Exec {
+            argv: vec!["ls".to_string(), "-la".to_string()],
+            reason: Some("list files".to_string()),
+            cwd: Some("/tmp".to_string()),
+            env: Some({
+                let mut map = HashMap::new();
+                map.insert("PATH".to_string(), "/usr/bin".to_string());
+                map
+            }),
+        };
+
+        match req {
+            RequestMethod::Exec {
+                argv,
+                reason,
+                cwd,
+                env,
+            } => {
+                assert_eq!(argv, vec!["ls", "-la"]);
+                assert_eq!(reason, Some("list files".to_string()));
+                assert_eq!(cwd, Some("/tmp".to_string()));
+                assert_eq!(
+                    env.as_ref().and_then(|e| e.get("PATH")),
+                    Some(&"/usr/bin".to_string())
+                );
+            }
+            _ => panic!("Expected Exec variant"),
+        }
+    }
+
+    #[test]
+    fn exec_request_minimal_fields() {
+        let req = RequestMethod::Exec {
+            argv: vec!["echo".to_string(), "hello".to_string()],
+            reason: None,
+            cwd: None,
+            env: None,
+        };
+
+        match req {
+            RequestMethod::Exec {
+                argv,
+                reason,
+                cwd,
+                env,
+            } => {
+                assert_eq!(argv, vec!["echo", "hello"]);
+                assert!(reason.is_none());
+                assert!(cwd.is_none());
+                assert!(env.is_none());
+            }
+            _ => panic!("Expected Exec variant"),
+        }
+    }
+
+    #[test]
+    fn exec_result_constructs_correctly() {
+        let result = ExecResult {
+            exit_code: 0,
+            stdout: b"hello world".to_vec(),
+            stderr: vec![],
+        };
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, b"hello world");
+        assert!(result.stderr.is_empty());
+    }
+
+    #[test]
+    fn exec_response_constructs_correctly() {
+        let result = ResponseResult::Exec {
+            result: ExecResult {
+                exit_code: 1,
+                stdout: vec![],
+                stderr: b"error: something went wrong".to_vec(),
+            },
+        };
+        let response = PortalResponse::ok(123, result);
+
+        assert!(response.ok);
+        assert_eq!(response.id, 123);
+        assert!(response.error.is_none());
+
+        match response.result {
+            Some(ResponseResult::Exec { result }) => {
+                assert_eq!(result.exit_code, 1);
+                assert_eq!(result.stderr, b"error: something went wrong");
+            }
+            _ => panic!("Expected Exec result variant"),
+        }
     }
 }

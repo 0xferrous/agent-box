@@ -2,6 +2,7 @@ use agent_box_common::portal::{RequestMethod, ResponseResult};
 use agent_box_common::portal_client::PortalClient;
 use clap::{Parser, Subcommand};
 use eyre::{Context, Result};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -34,6 +35,16 @@ enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         argv: Vec<String>,
     },
+    Exec {
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        argv: Vec<String>,
+        #[arg(long)]
+        cwd: Option<String>,
+        #[arg(long)]
+        env: Vec<String>,
+    },
 }
 
 fn main() {
@@ -62,6 +73,24 @@ fn run() -> Result<()> {
             argv,
             reason,
             require_approval,
+        },
+        Commands::Exec {
+            reason,
+            argv,
+            cwd,
+            env,
+        } => RequestMethod::Exec {
+            argv,
+            reason,
+            cwd,
+            env: Some(HashMap::from_iter(
+                env.into_iter()
+                    .map(|x| {
+                        let val = x.split_once('=').unwrap();
+                        (val.0.to_string(), val.1.to_string())
+                    })
+                    .collect::<Vec<(String, String)>>(),
+            )),
         },
     };
 
@@ -115,6 +144,15 @@ fn run() -> Result<()> {
                 eprint!("{}", String::from_utf8_lossy(&stderr));
             }
             std::process::exit(exit_code);
+        }
+        ResponseResult::Exec { result } => {
+            if !result.stdout.is_empty() {
+                print!("{}", String::from_utf8_lossy(&result.stdout));
+            }
+            if !result.stderr.is_empty() {
+                eprint!("{}", String::from_utf8_lossy(&result.stderr));
+            }
+            std::process::exit(result.exit_code);
         }
     }
 

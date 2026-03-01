@@ -1,10 +1,10 @@
 use agent_box_common::config::load_config;
 use agent_box_common::portal::{
-    GhExecPolicyMode, PolicyDecision, PortalRequest, PortalResponse, RequestMethod, ResponseResult,
-    extract_podman_container_id_from_cgroup,
+    ExecResult, GhExecPolicyMode, PolicyDecision, PortalRequest, PortalResponse, RequestMethod,
+    ResponseResult, extract_podman_container_id_from_cgroup,
 };
 use clap::Parser;
-use eyre::{Context, Result};
+use eyre::{Context, OptionExt, Result};
 use nix::sys::socket::{getsockopt, sockopt::PeerCredentials};
 use rmp_serde::{from_read, to_vec_named};
 use serde::Deserialize;
@@ -14,6 +14,7 @@ use std::io::IsTerminal;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -122,6 +123,10 @@ fn main() {
 }
 
 fn run() -> Result<()> {
+    let path = std::env::var("PATH").unwrap_or_default();
+    let path = path.split(':').collect::<Vec<_>>();
+    tracing::info!(path = ?path, "PATH");
+
     let cli = Cli::parse();
     let config = load_config()?;
     let portal = config.portal;
@@ -367,6 +372,43 @@ fn handle_client(mut stream: UnixStream, state: &AppState) -> Result<()> {
                 Err(e) => PortalResponse::err(req.id, "gh_exec_failed", e.to_string()),
             }
         }
+        RequestMethod::Exec {
+            argv,
+            reason,
+            cwd,
+            env,
+        } => {
+            debug!(request_id = req.id, argv = ?argv, "exec argv");
+            match prompt_allow(state, &identity, reason.as_deref()) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return send_response(
+                        stream,
+                        &PortalResponse::err(req.id, "denied", "request denied by policy"),
+                    );
+                }
+                Err(e) => {
+                    return send_response(
+                        stream,
+                        &PortalResponse::err(req.id, "prompt_failed", e.to_string()),
+                    );
+                }
+            }
+
+            match execute_exec_on_host(&argv, cwd, env) {
+                Ok((exit_code, stdout, stderr)) => PortalResponse::ok(
+                    req.id,
+                    ResponseResult::Exec {
+                        result: ExecResult {
+                            exit_code,
+                            stdout,
+                            stderr,
+                        },
+                    },
+                ),
+                Err(e) => PortalResponse::err(req.id, "exec_failed", e.to_string()),
+            }
+        }
     };
 
     send_response(stream, &response)
@@ -529,6 +571,57 @@ fn execute_gh_on_host(argv: &[String]) -> Result<(i32, Vec<u8>, Vec<u8>)> {
         .output()
         .wrap_err_with(|| format!("failed to run host gh binary: {}", gh_bin))?;
 
+    let exit_code = out.status.code().unwrap_or(1);
+    Ok((exit_code, out.stdout, out.stderr))
+}
+
+fn resolve_binary(name: &str) -> Result<String> {
+    let path = std::env::var("PATH").unwrap_or_default();
+    let path = path.split(':').collect::<Vec<_>>();
+    for p in path {
+        let p = PathBuf::from(p);
+        let candidate = p.join(name);
+        if candidate.exists() {
+            debug!(binary = %name, path = %candidate.display(), "resolving binary");
+            return Ok(candidate.to_string_lossy().to_string());
+        }
+    }
+    tracing::error!(binary = %name, "binary not found in path");
+    Err(eyre::eyre!("binary not found in path"))
+}
+
+fn execute_exec_on_host(
+    argv: &[String],
+    cwd: Option<String>,
+    env: Option<HashMap<String, String>>,
+) -> Result<(i32, Vec<u8>, Vec<u8>)> {
+    let command = argv.first().ok_or_eyre("empty command")?;
+    let command = &resolve_binary(command)?;
+
+    let argv: Vec<String> = if argv.len() > 1 {
+        argv[1..].to_vec()
+    } else {
+        vec![]
+    };
+    let argv_joined = argv.join(" ");
+
+    let mut cmd = Command::new(command);
+    let cmd = cmd.args(argv);
+    let cmd = if let Some(cwd) = cwd {
+        cmd.current_dir(cwd)
+    } else {
+        cmd
+    };
+    let cmd = if let Some(env) = env {
+        // TODO: maybe should env_clear?
+        cmd.envs(env)
+    } else {
+        cmd
+    };
+
+    let out = cmd
+        .output()
+        .wrap_err_with(|| format!("failed to run host command: {command} {}", argv_joined))?;
     let exit_code = out.status.code().unwrap_or(1);
     Ok((exit_code, out.stdout, out.stderr))
 }
