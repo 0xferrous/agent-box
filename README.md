@@ -2,6 +2,7 @@
 
 Agent-box provides sandboxed development workflows for coding agents, plus optional Portal-based host capability mediation.
 
+> [!NOTE]
 > This repository now uses the mdBook docs site as the primary documentation source.
 
 ## Demo

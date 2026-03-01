@@ -3,7 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**/.github/workflows/*.yml'
+      - 'flake.nix'
+      - '.cargo/config.toml'
   pull_request:
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**/.github/workflows/*.yml'
+      - 'flake.nix'
+      - '.cargo/config.toml'
   merge_group:
   workflow_dispatch:
 
