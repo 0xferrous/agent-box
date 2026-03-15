@@ -110,3 +110,96 @@ Usage: ab info
 Options:
   -h, --help  Print help
 ```
+
+## `ab dbg`
+
+Command:
+
+```bash
+cargo run -q -p ab -- dbg --help
+```
+
+Output:
+
+```text
+Debug commands (hidden from main help)
+
+Usage: ab dbg <COMMAND>
+
+Commands:
+  locate      Locate a repository by partial path match (or list all if no search given)
+  list        List all workspace groups with their status
+  remove      Remove all workspaces for a given repo ID
+  validate    Validate configuration (profiles, extends, default_profile)
+  resolve     Show resolved/merged configuration from profiles
+  check-path  Check if a path exists in a container image
+  list-paths  List all paths (directories) in a container image
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
+
+## `ab dbg list`
+
+Command:
+
+```bash
+cargo run -q -p ab -- dbg list --help
+```
+
+Output:
+
+```text
+List all workspace groups with their status
+
+Usage: ab dbg list [OPTIONS]
+
+Options:
+      --unresolved  Show only unresolved workspaces (source repo not found)
+  -h, --help        Print help
+```
+
+## `ab dbg remove`
+
+Command:
+
+```bash
+cargo run -q -p ab -- dbg remove --help
+```
+
+Output:
+
+```text
+Remove all workspaces for a given repo ID
+
+Usage: ab dbg remove [OPTIONS] [REPO]
+
+Arguments:
+  [REPO]  Repository identifier (e.g., "fr/agent-box" or "agent-box")
+
+Options:
+      --dry-run     Show what would be deleted without actually deleting
+  -f, --force       Skip confirmation prompt
+      --unresolved  Remove all unresolved workspaces (source repo not found)
+  -h, --help        Print help
+```
+
+## `ab dbg validate`
+
+Command:
+
+```bash
+cargo run -q -p ab -- dbg validate --help
+```
+
+Output:
+
+```text
+Validate configuration (profiles, extends, default_profile)
+
+Usage: ab dbg validate
+
+Options:
+  -h, --help  Print help
+```

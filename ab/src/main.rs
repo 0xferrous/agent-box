@@ -3,8 +3,10 @@ use agent_box_common::config::{
     validate_config_or_err,
 };
 use agent_box_common::display::info;
-use agent_box_common::path::WorkspaceType;
-use agent_box_common::repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
+use agent_box_common::path::{WorkspaceStatus, WorkspaceType, scan_workspaces};
+use agent_box_common::repo::{
+    find_git_workdir, locate_repo, new_workspace, remove_repo, resolve_repo_id,
+};
 use clap::{Parser, Subcommand};
 use eyre::Result;
 use std::path::PathBuf;
@@ -149,16 +151,26 @@ enum DbgCommands {
         /// Repository search string (e.g., "agent-box" or "fr/agent-box")
         repo: Option<String>,
     },
+    /// List all workspace groups with their status
+    List {
+        /// Show only unresolved workspaces (source repo not found)
+        #[arg(long)]
+        unresolved: bool,
+    },
     /// Remove all workspaces for a given repo ID
     Remove {
         /// Repository identifier (e.g., "fr/agent-box" or "agent-box")
-        repo: String,
+        #[arg(required_unless_present = "unresolved")]
+        repo: Option<String>,
         /// Show what would be deleted without actually deleting
         #[arg(long)]
         dry_run: bool,
         /// Skip confirmation prompt
         #[arg(long, short)]
         force: bool,
+        /// Remove all unresolved workspaces (source repo not found)
+        #[arg(long, conflicts_with = "repo")]
+        unresolved: bool,
     },
     /// Validate configuration (profiles, extends, default_profile)
     Validate,
@@ -192,7 +204,7 @@ enum DbgCommands {
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }
@@ -220,12 +232,35 @@ fn run() -> eyre::Result<()> {
                 WorkspaceType::Jj
             };
 
-            new_workspace(
+            // If the repo_name is a bare name (no path separator) and the
+            // call fails due to discovery not being configured, provide a
+            // helpful hint suggesting how to use `ab new` correctly.
+            let result = new_workspace(
                 &config,
                 repo_name.as_deref(),
                 session.as_deref(),
                 workspace_type,
-            )?;
+            );
+            if let Err(e) = result {
+                let is_bare_name = repo_name
+                    .as_deref()
+                    // Check both '/' and MAIN_SEPARATOR for cross-platform correctness.
+                    // On Unix these are the same; on Windows MAIN_SEPARATOR is '\\'.
+                    .is_some_and(|name| {
+                        !name.contains('/') && !name.contains(std::path::MAIN_SEPARATOR)
+                    });
+                if is_bare_name {
+                    let name = repo_name.as_deref().unwrap();
+                    // wrap_err preserves the original error chain, so even if the
+                    // failure was not a discovery error, the underlying cause is
+                    // still visible in the error output.
+                    return Err(e.wrap_err(format!(
+                        "could not find a git repository at '{name}'\n\
+                         Hint: use 'cd {name} && ab new' or pass a full path like 'ab new /path/to/{name}'"
+                    )));
+                }
+                return Err(e);
+            }
         }
         Commands::Spawn {
             repo,
@@ -257,7 +292,11 @@ fn run() -> eyre::Result<()> {
                 // Otherwise, use the current directory directly.
                 // No base_repo_dir lookup is required.
                 let cwd = std::env::current_dir()?;
-                let path = agent_box_common::repo::find_git_root().unwrap_or(cwd);
+                // Local mode uses find_git_workdir (not find_git_root) to
+                // preserve the user's current directory, even if it is a
+                // linked worktree. Session mode resolves to the main repo
+                // root; local mode deliberately does not.
+                let path = find_git_workdir().unwrap_or(cwd);
                 (path.clone(), path)
             } else {
                 // In session mode, we need a valid repo_id in base_repo_dir
@@ -307,7 +346,7 @@ fn run() -> eyre::Result<()> {
             ) {
                 Ok(cfg) => cfg,
                 Err(e) => {
-                    eprintln!("Error building container config: {}", e);
+                    eprintln!("Error building container config: {e}");
                     std::process::exit(1);
                 }
             };
@@ -323,38 +362,163 @@ fn run() -> eyre::Result<()> {
                 let repo_id = locate_repo(&config, repo.as_deref())?;
                 println!("{}", repo_id.relative_path().display());
             }
+            DbgCommands::List { unresolved } => {
+                let workspaces = scan_workspaces(&config)?;
+
+                let filtered: Vec<_> = if unresolved {
+                    workspaces
+                        .into_iter()
+                        .filter(|w| w.status == WorkspaceStatus::Unresolved)
+                        .collect()
+                } else {
+                    workspaces
+                };
+
+                if filtered.is_empty() {
+                    if unresolved {
+                        println!("No unresolved workspaces found.");
+                    } else {
+                        println!("No workspaces found.");
+                    }
+                    return Ok(());
+                }
+
+                // When --unresolved is active, all items are unresolved so this is
+                // always true; the variable is only needed for the unfiltered case.
+                let mut has_unresolved = false;
+                for ws in &filtered {
+                    let session_word = if ws.session_count == 1 {
+                        "session"
+                    } else {
+                        "sessions"
+                    };
+                    if ws.status == WorkspaceStatus::Unresolved {
+                        has_unresolved = true;
+                    }
+                    println!(
+                        "{}  {}  {} {session_word}  {}",
+                        ws.source_path.display(),
+                        ws.workspace_type.as_str(),
+                        ws.session_count,
+                        ws.status.as_str(),
+                    );
+                }
+
+                // Print explanatory footer if any workspaces are unresolved
+                if has_unresolved {
+                    println!();
+                    println!(
+                        "Note: \"unresolved\" means no repo was found at the reconstructed path."
+                    );
+                    println!(
+                        "This can happen if the repo was deleted or if base_repo_dir changed since the workspace was created."
+                    );
+                    println!("To clean up: ab dbg remove --unresolved");
+                }
+            }
             DbgCommands::Remove {
                 repo,
                 dry_run,
                 force,
+                unresolved,
             } => {
-                // Locate the repository identifier
-                let repo_id = locate_repo(&config, Some(&repo))?;
+                if unresolved {
+                    // Remove all unresolved workspaces (source repo not found)
+                    let workspaces = scan_workspaces(&config)?;
+                    let unresolved_ws: Vec<_> = workspaces
+                        .iter()
+                        .filter(|w| w.status == WorkspaceStatus::Unresolved)
+                        .collect();
 
-                // Show what will be removed (always, even if --force is used)
-                remove_repo(&config, &repo_id, true)?;
-
-                // If dry-run, we're done
-                if dry_run {
-                    return Ok(());
-                }
-
-                // Prompt for confirmation unless --force is used
-                if !force {
-                    let confirmed =
-                        inquire::Confirm::new("Are you sure you want to remove these directories?")
-                            .with_default(false)
-                            .prompt()
-                            .unwrap_or(false);
-
-                    if !confirmed {
-                        println!("Cancelled.");
+                    if unresolved_ws.is_empty() {
+                        println!("No unresolved workspaces found.");
                         return Ok(());
                     }
-                }
 
-                // Actually remove
-                remove_repo(&config, &repo_id, false)?;
+                    println!("The following unresolved workspaces will be removed:\n");
+                    for ws in &unresolved_ws {
+                        println!(
+                            "  {} ({}, {} session{})",
+                            ws.workspace_dir(&config).display(),
+                            ws.workspace_type.as_str(),
+                            ws.session_count,
+                            if ws.session_count == 1 { "" } else { "s" }
+                        );
+                    }
+
+                    if dry_run {
+                        println!("\n[DRY RUN] No files were actually deleted.");
+                        return Ok(());
+                    }
+
+                    // Prompt for confirmation unless --force is used
+                    if !force {
+                        println!(
+                            "\nNote: workspaces may appear unresolved if base_repo_dir was changed."
+                        );
+                        println!("Verify the list above before confirming.");
+                        let confirmed = inquire::Confirm::new(
+                            "Are you sure you want to remove these directories?",
+                        )
+                        .with_default(false)
+                        .prompt()
+                        .unwrap_or(false);
+
+                        if !confirmed {
+                            println!("Cancelled.");
+                            return Ok(());
+                        }
+                    }
+
+                    // Actually remove, tracking how many directories were
+                    // successfully deleted (some may already be gone).
+                    let mut removed_count = 0usize;
+                    for ws in &unresolved_ws {
+                        let dir = ws.workspace_dir(&config);
+                        if dir.exists() {
+                            println!("Removing: {}", dir.display());
+                            if let Err(e) = std::fs::remove_dir_all(&dir) {
+                                eprintln!("  Failed to remove {}: {e}", dir.display());
+                                return Err(e.into());
+                            }
+                            println!("  Removed");
+                            removed_count += 1;
+                        }
+                    }
+                    println!("\nDone. Removed {removed_count} unresolved workspace group(s).");
+                } else {
+                    // Original per-repo remove behavior.
+                    // clap's required_unless_present guarantees repo is Some
+                    // here, but unwrap with a message for safety.
+                    let repo = repo.expect("repo is required by clap unless --unresolved is set");
+                    let repo_id = locate_repo(&config, Some(&repo))?;
+
+                    // Show what will be removed (always, even if --force is used)
+                    remove_repo(&config, &repo_id, true)?;
+
+                    // If dry-run, we're done
+                    if dry_run {
+                        return Ok(());
+                    }
+
+                    // Prompt for confirmation unless --force is used
+                    if !force {
+                        let confirmed = inquire::Confirm::new(
+                            "Are you sure you want to remove these directories?",
+                        )
+                        .with_default(false)
+                        .prompt()
+                        .unwrap_or(false);
+
+                        if !confirmed {
+                            println!("Cancelled.");
+                            return Ok(());
+                        }
+                    }
+
+                    // Actually remove
+                    remove_repo(&config, &repo_id, false)?;
+                }
             }
             DbgCommands::Validate => {
                 let result = validate_config(&config);
@@ -363,7 +527,7 @@ fn run() -> eyre::Result<()> {
                 if !result.errors.is_empty() {
                     eprintln!("Errors:");
                     for error in &result.errors {
-                        eprintln!("  ✗ {}", error);
+                        eprintln!("  ✗ {error}");
                     }
                 }
 
@@ -374,7 +538,7 @@ fn run() -> eyre::Result<()> {
                     }
                     eprintln!("Warnings:");
                     for warning in &result.warnings {
-                        eprintln!("  ⚠ {}", warning);
+                        eprintln!("  ⚠ {warning}");
                     }
                 }
 
@@ -398,12 +562,12 @@ fn run() -> eyre::Result<()> {
                             } else {
                                 format!(" (extends: {})", profile.extends.join(", "))
                             };
-                            println!("  - {}{}", name, extends_info);
+                            println!("  - {name}{extends_info}");
                         }
                     }
 
                     if let Some(ref default) = config.default_profile {
-                        println!("\nDefault profile: {}", default);
+                        println!("\nDefault profile: {default}");
                     }
                 } else {
                     eprintln!(
@@ -444,19 +608,19 @@ fn run() -> eyre::Result<()> {
                         match m.to_resolved_mounts() {
                             Ok(resolved_mounts) if resolved_mounts.is_empty() => {
                                 // Path was filtered out (doesn't exist)
-                                println!("    {} -> FILTERED (path does not exist)", m);
+                                println!("    {m} -> FILTERED (path does not exist)");
                             }
                             Ok(resolved_mounts) if resolved_mounts.len() == 1 => {
-                                println!("    {} -> {}", m, resolved_mounts[0].to_bind_string());
+                                println!("    {m} -> {}", resolved_mounts[0].to_bind_string());
                             }
                             Ok(resolved_mounts) => {
                                 // Multiple resolved_mounts (symlink chain)
-                                println!("    {} ->", m);
+                                println!("    {m} ->");
                                 for rm in resolved_mounts {
                                     println!("      {}", rm.to_bind_string());
                                 }
                             }
-                            Err(e) => println!("    {} -> ERROR: {}", m, e),
+                            Err(e) => println!("    {m} -> ERROR: {e}"),
                         }
                     }
                 }
@@ -467,7 +631,7 @@ fn run() -> eyre::Result<()> {
                     println!("    (none)");
                 } else {
                     for e in &resolved.env {
-                        println!("    {}", e);
+                        println!("    {e}");
                     }
                 }
 
@@ -479,8 +643,8 @@ fn run() -> eyre::Result<()> {
                     for var_name in &resolved.env_passthrough {
                         // Show what value it would have if it were to be passed through
                         match std::env::var(var_name) {
-                            Ok(value) => println!("    {} = {}", var_name, value),
-                            Err(_) => println!("    {} = (not set in host)", var_name),
+                            Ok(value) => println!("    {var_name} = {value}"),
+                            Err(_) => println!("    {var_name} = (not set in host)"),
                         }
                     }
                 }
@@ -491,7 +655,7 @@ fn run() -> eyre::Result<()> {
                     println!("    (none)");
                 } else {
                     for p in &resolved.ports {
-                        println!("    {}", p);
+                        println!("    {p}");
                     }
                 }
 
@@ -501,7 +665,7 @@ fn run() -> eyre::Result<()> {
                     println!("    (none)");
                 } else {
                     for h in &resolved.hosts {
-                        println!("    {}", h);
+                        println!("    {h}");
                     }
                 }
 
@@ -511,7 +675,7 @@ fn run() -> eyre::Result<()> {
                     println!("    (none)");
                 } else {
                     for c in &resolved.context {
-                        println!("    {}", c);
+                        println!("    {c}");
                     }
                 }
             }
@@ -519,8 +683,8 @@ fn run() -> eyre::Result<()> {
                 let runtime = create_runtime(&config);
 
                 println!("Checking if path exists in image...");
-                println!("  Image: {}", image);
-                println!("  Path: {}", path);
+                println!("  Image: {image}");
+                println!("  Path: {path}");
                 println!();
 
                 match runtime.path_exists_in_image(&image, &path) {
@@ -533,7 +697,7 @@ fn run() -> eyre::Result<()> {
                         std::process::exit(1);
                     }
                     Err(e) => {
-                        eprintln!("Error checking path: {}", e);
+                        eprintln!("Error checking path: {e}");
                         std::process::exit(2);
                     }
                 }
@@ -549,10 +713,10 @@ fn run() -> eyre::Result<()> {
                 let root_display = root.unwrap_or("/");
 
                 println!("Listing paths in image...");
-                println!("  Image: {}", image);
-                println!("  Root: {}", root_display);
+                println!("  Image: {image}");
+                println!("  Root: {root_display}");
                 if let Some(f) = &filter {
-                    println!("  Filter: {}", f);
+                    println!("  Filter: {f}");
                 }
                 println!();
 
@@ -572,12 +736,12 @@ fn run() -> eyre::Result<()> {
                         } else {
                             println!("Found {} directories:", filtered_paths.len());
                             for path in filtered_paths {
-                                println!("  {}", path);
+                                println!("  {path}");
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error listing paths: {}", e);
+                        eprintln!("Error listing paths: {e}");
                         std::process::exit(1);
                     }
                 }

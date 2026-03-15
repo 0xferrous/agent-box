@@ -4,7 +4,9 @@
   "type": "object",
   "properties": {
     "base_repo_dir": {
-      "type": "string"
+      "description": "Base directory for repo discovery and relative path computation.\nDefaults to \"/\" so session mode works for repos anywhere on the filesystem.\nUsers can set this to a common ancestor (e.g., \"~/repos\") for shorter workspace paths.",
+      "type": "string",
+      "default": "/"
     },
     "context": {
       "description": "Root-level context",
@@ -74,8 +76,7 @@
     }
   },
   "required": [
-    "workspace_dir",
-    "base_repo_dir"
+    "workspace_dir"
   ],
   "$defs": {
     "ClipboardConfig": {

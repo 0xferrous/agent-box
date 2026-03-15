@@ -552,6 +552,12 @@ fn default_context_path() -> String {
     "/tmp/context".to_string()
 }
 
+/// Default base_repo_dir to "/" so session mode works for repos anywhere
+/// on the filesystem without requiring upfront configuration.
+fn default_base_repo_dir() -> PathBuf {
+    PathBuf::from("/")
+}
+
 #[derive(Debug, Deserialize, Default, Clone, PartialEq, JsonSchema)]
 pub struct RuntimeConfig {
     #[serde(default = "default_backend")]
@@ -580,7 +586,16 @@ pub struct RuntimeConfig {
 #[derive(Debug, Deserialize, PartialEq, JsonSchema)]
 pub struct Config {
     pub workspace_dir: PathBuf,
+    /// Base directory for repo discovery and relative path computation.
+    /// Defaults to "/" so session mode works for repos anywhere on the filesystem.
+    /// Users can set this to a common ancestor (e.g., "~/repos") for shorter workspace paths.
+    #[serde(default = "default_base_repo_dir")]
     pub base_repo_dir: PathBuf,
+    /// Whether base_repo_dir was explicitly set in config (not defaulted to "/").
+    /// Used to distinguish "user configured base_repo_dir" from "using default"
+    /// for discovery fallback behavior.
+    #[serde(skip)]
+    pub base_repo_dir_explicit: bool,
     /// Default profile name to always apply (if set)
     #[serde(default)]
     pub default_profile: Option<String>,
@@ -811,10 +826,17 @@ pub fn load_config() -> Result<Config> {
 
     let figment = build_figment(&global_config_path, repo_config_path.as_ref());
 
+    // Check whether base_repo_dir was explicitly provided in any config source
+    // before extraction fills in the serde default. This lets us distinguish
+    // "user set base_repo_dir" from "defaulted to /" for discovery behavior.
+    let base_repo_dir_explicit = figment.find_value("base_repo_dir").is_ok();
+
     let mut config: Config = figment.extract().map_err(|e| {
         // Convert figment::Error to eyre::Report with nice formatting
         eyre::eyre!("{}", e)
     })?;
+
+    config.base_repo_dir_explicit = base_repo_dir_explicit;
 
     // Expand all paths
     config.workspace_dir =
@@ -1522,6 +1544,7 @@ mod tests {
             context: String::new(),
             context_path: "/tmp/context".to_string(),
             portal: crate::portal::PortalConfig::default(),
+            base_repo_dir_explicit: true,
         }
     }
 
@@ -3049,6 +3072,71 @@ mod tests {
                 resolved.context,
                 vec!["root-context", "base-context", "dev-context"]
             );
+
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_config_without_base_repo_dir() {
+        // When base_repo_dir is not in the TOML, serde defaults it to "/"
+        // and find_value should report it as absent.
+        Jail::expect_with(|jail| {
+            jail.create_file(
+                "global.toml",
+                r#"
+                workspace_dir = "/workspaces"
+
+                [runtime]
+                backend = "docker"
+                image = "test:latest"
+                "#,
+            )?;
+
+            let global_path = jail.directory().join("global.toml");
+            let figment = build_figment(&global_path, None);
+
+            // find_value returns Err when the key is absent from all providers
+            let base_repo_dir_explicit = figment.find_value("base_repo_dir").is_ok();
+            assert!(
+                !base_repo_dir_explicit,
+                "base_repo_dir should not be found in figment when absent from TOML"
+            );
+
+            let config: Config = figment.extract()?;
+            assert_eq!(config.base_repo_dir, PathBuf::from("/"));
+
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_config_with_explicit_base_repo_dir() {
+        // When base_repo_dir is explicitly set in TOML, find_value should find it.
+        Jail::expect_with(|jail| {
+            jail.create_file(
+                "global.toml",
+                r#"
+                workspace_dir = "/workspaces"
+                base_repo_dir = "/home/user/repos"
+
+                [runtime]
+                backend = "docker"
+                image = "test:latest"
+                "#,
+            )?;
+
+            let global_path = jail.directory().join("global.toml");
+            let figment = build_figment(&global_path, None);
+
+            let base_repo_dir_explicit = figment.find_value("base_repo_dir").is_ok();
+            assert!(
+                base_repo_dir_explicit,
+                "base_repo_dir should be found in figment when present in TOML"
+            );
+
+            let config: Config = figment.extract()?;
+            assert_eq!(config.base_repo_dir, PathBuf::from("/home/user/repos"));
 
             Ok(())
         });

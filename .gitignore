@@ -2,3 +2,5 @@
 demo.gif
 result
 .direnv/
+.claude/
+.playwright-mcp/

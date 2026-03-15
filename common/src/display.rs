@@ -2,6 +2,7 @@ use eyre::Result;
 
 use crate::config::Config;
 use crate::path::RepoIdentifier;
+use crate::repo::find_git_root_from;
 
 // ANSI color codes
 const RESET: &str = "\x1b[0m";
@@ -16,10 +17,11 @@ const MAGENTA: &str = "\x1b[35m";
 pub fn info(config: &Config) -> Result<()> {
     let cwd = std::env::current_dir()?;
 
-    let repo = gix::discover(&cwd).ok();
-    let repo_path = repo
-        .as_ref()
-        .and_then(|r| r.workdir().map(|p| p.to_path_buf()));
+    // Use find_git_root_from to resolve linked worktrees to the main repo
+    // root, so `ab info` from inside a session workspace shows the source
+    // repo's workspaces. Use .ok() to preserve graceful handling when the
+    // user is not inside a git repo.
+    let repo_path = find_git_root_from(&cwd).ok();
 
     let Some(repo_path) = repo_path else {
         eprintln!("Not in a git repository");
@@ -27,6 +29,13 @@ pub fn info(config: &Config) -> Result<()> {
     };
 
     let repo_id = RepoIdentifier::from_repo_path(config, &repo_path)?;
+
+    // Show the source repo path as a header for identification
+    println!(
+        "{BOLD}Repository:{RESET} {}",
+        repo_id.source_path(config).display()
+    );
+    println!();
 
     // Git worktrees
     println!("{BOLD}Git Worktrees:{RESET}");

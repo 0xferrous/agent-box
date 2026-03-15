@@ -18,7 +18,7 @@ Merge behavior:
 ## Root keys
 
 - `workspace_dir` (path): base directory for generated workspaces
-- `base_repo_dir` (path): base directory for source repositories
+- `base_repo_dir` (path, default `/`): base directory for source repositories. When defaulting to `/`, the full filesystem path is mirrored inside the workspace directory (e.g., `/home/user/repos/myproject` becomes `{workspace_dir}/git/home/user/repos/myproject/{session}`). Set this to a common ancestor of your repos (e.g., `~/repos`) for shorter workspace paths.
 - `default_profile` (string|null): profile automatically applied to `ab spawn`
 - `profiles` (table): named profile definitions
 - `runtime` (table): runtime/backend settings
@@ -216,6 +216,19 @@ ab dbg resolve -p rust -p gpg
 Portal config is defined under `[portal]` in the same file.
 
 See [Portal config](../portal/config.md) and [Portal wrapper contract](../portal/wrapper-contract.md).
+
+## Migrating away from `base_repo_dir`
+
+If you remove `base_repo_dir` from your configuration (or change its value), existing workspaces become **unresolved** because their paths were computed relative to the old `base_repo_dir` value.
+
+To inspect and clean up:
+
+1. Run `ab dbg list --unresolved` to see which workspaces no longer resolve to a source repository.
+2. Run `ab dbg remove --unresolved` to delete the orphaned workspace directories.
+
+Workspaces created via symlinked paths before canonicalization was introduced may also appear unresolved, since the canonical path differs from the original symlink path.
+
+If you prefer to avoid any disruption, you can keep your existing `base_repo_dir` setting. It remains fully supported and provides backward compatibility with all previously created workspaces.
 
 ## JSON Schema
 
