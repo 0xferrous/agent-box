@@ -28,19 +28,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Cache mdBook tools
+        id: mdbook-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin
-          key: ${{ runner.os }}-mdbook-tools-2026-03-15
-          restore-keys: |
-            ${{ runner.os }}-mdbook-tools-
+          key: ${{ runner.os }}-mdbook-tools-v1-mdbook-0.5.2-excalidraw-2d8f07905f57d1c460ccb9f7279af4f4999b9ee2
 
       - name: Install mdBook + mdbook-excalidraw
+        if: steps.mdbook-cache.outputs.cache-hit != 'true'
         run: |
-          cargo install mdbook --locked
+          cargo install mdbook --version 0.5.2 --locked
           cargo install \
             --git https://github.com/peachycloudsecurity/mdbook-excalidraw \
             --rev 2d8f07905f57d1c460ccb9f7279af4f4999b9ee2 \
