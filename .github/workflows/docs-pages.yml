@@ -34,13 +34,17 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin
-          key: ${{ runner.os }}-mdbook-tools-2026-03-01
+          key: ${{ runner.os }}-mdbook-tools-2026-03-15
           restore-keys: |
             ${{ runner.os }}-mdbook-tools-
 
       - name: Install mdBook + mdbook-excalidraw
         run: |
-          cargo install mdbook mdbook-excalidraw --locked
+          cargo install mdbook --locked
+          cargo install \
+            --git https://github.com/peachycloudsecurity/mdbook-excalidraw \
+            --rev 2d8f07905f57d1c460ccb9f7279af4f4999b9ee2 \
+            mdbook-excalidraw
 
       - name: Build mdBook
         run: mdbook build docs
