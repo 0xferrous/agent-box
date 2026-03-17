@@ -17,7 +17,15 @@
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rustfmt" "clippy" ];
         };
-        mdbook-excalidraw = pkgs.rustPlatform.buildRustPackage rec {
+
+        workspaceToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+        wrappersCrateToml = builtins.fromTOML (builtins.readFile ./wrappers/Cargo.toml);
+        portalCrateToml = builtins.fromTOML (builtins.readFile ./portal/Cargo.toml);
+        abCrateToml = builtins.fromTOML (builtins.readFile ./ab/Cargo.toml);
+
+        portalHostBin = "${portalCrateToml.package.name}-host";
+
+        mdbook-excalidraw = pkgs.rustPlatform.buildRustPackage {
           pname = "mdbook-excalidraw";
           version = "0.1.0";
           src = pkgs.fetchFromGitHub {
@@ -30,57 +38,63 @@
           cargoHash = "sha256-h+sunASiueLa1LZNfTUZlidS1KVh9orxFnTpCcf3s/Y=";
         };
 
-        wrappers = pkgs.rustPlatform.buildRustPackage {
-          pname = "agent-wrappers";
-          version = "0.1.0";
+        wrappers = pkgs.rustPlatform.buildRustPackage rec {
+          pname = wrappersCrateToml.package.name;
+          version = workspaceToml.workspace.package.version;
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
-          cargoBuildFlags = [ "-p" "agent-wrappers" ];
-          cargoTestFlags = [ "-p" "agent-wrappers" ];
-          cargoInstallFlags = [ "-p" "agent-wrappers" ];
+          cargoBuildFlags = [ "-p" pname ];
+          cargoTestFlags = [ "-p" pname ];
+          cargoInstallFlags = [ "-p" pname ];
 
           OPENSSL_DIR = "${pkgs.openssl.dev}";
           OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
           OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
         };
 
-        portal = pkgs.rustPlatform.buildRustPackage {
-          pname = "agent-portal";
-          version = "0.1.0";
+        portal = pkgs.rustPlatform.buildRustPackage rec {
+          pname = portalCrateToml.package.name;
+          version = workspaceToml.workspace.package.version;
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
-          cargoBuildFlags = [ "-p" "agent-portal" "--bin" "agent-portal-host" ];
-          cargoTestFlags = [ "-p" "agent-portal" "--bin" "agent-portal-host" ];
-          cargoInstallFlags = [ "-p" "agent-portal" "--bin" "agent-portal-host" ];
+          cargoBuildFlags = [ "-p" pname "--bin" portalHostBin ];
+          cargoTestFlags = [ "-p" pname "--bin" portalHostBin ];
+          cargoInstallFlags = [ "-p" pname "--bin" portalHostBin ];
 
           OPENSSL_DIR = "${pkgs.openssl.dev}";
           OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
           OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
         };
 
-        cli = pkgs.rustPlatform.buildRustPackage {
-          pname = "agent-portal-cli";
-          version = "0.1.0";
+        cli = pkgs.rustPlatform.buildRustPackage rec {
+          pname = "${portalCrateToml.package.name}-cli";
+          version = workspaceToml.workspace.package.version;
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
-          cargoBuildFlags = [ "-p" "agent-portal" "--bin" "agent-portal-cli" ];
-          cargoTestFlags = [ "-p" "agent-portal" "--bin" "agent-portal-cli" ];
-          cargoInstallFlags = [ "-p" "agent-portal" "--bin" "agent-portal-cli" ];
+          cargoBuildFlags = [ "-p" portalCrateToml.package.name "--bin" pname ];
+          cargoTestFlags = [ "-p" portalCrateToml.package.name "--bin" pname ];
+          cargoInstallFlags = [ "-p" portalCrateToml.package.name "--bin" pname ];
 
           OPENSSL_DIR = "${pkgs.openssl.dev}";
           OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
           OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
+        };
+
+        ab = pkgs.rustPlatform.buildRustPackage rec {
+          pname = abCrateToml.package.name;
+          version = workspaceToml.workspace.package.version;
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = [ "-p" pname ];
+          cargoTestFlags = [ "-p" pname ];
         };
       in
       {
         packages = {
-          wrappers = wrappers;
-          portal = portal;
-          cli = cli;
-          mdbook-excalidraw = pkgs.mdbook-excalidraw;
+          inherit ab wrappers portal cli mdbook-excalidraw;
           default = wrappers;
         };
 
