@@ -1,12 +1,10 @@
 use agent_box_common::config::load_config;
 use clap::Parser;
 use eyre::Result;
-use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tracing::error;
-use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(name = "agent-portal-host")]
@@ -17,33 +15,38 @@ struct Cli {
     socket: Option<String>,
 }
 
-fn init_logging() {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,agent_portal_host=info"));
-
-    tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .with_ansi(std::io::stderr().is_terminal())
-        .init();
-}
-
 fn main() {
-    init_logging();
+    let cli = Cli::parse();
 
-    if let Err(e) = run() {
+    let config = match load_config() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
+    let socket_path = PathBuf::from(
+        cli.socket
+            .clone()
+            .unwrap_or_else(|| config.portal.socket_path.clone()),
+    );
+
+    if let Err(e) = agent_portal::logging::init(None, Some(&socket_path), true) {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+
+    if let Err(e) = run(cli, config.portal) {
         error!(error = %e, "portal host failed");
         std::process::exit(1);
     }
 }
 
-fn run() -> Result<()> {
+fn run(cli: Cli, portal: agent_box_common::portal::PortalConfig) -> Result<()> {
     let path = std::env::var("PATH").unwrap_or_default();
     let path = path.split(':').collect::<Vec<_>>();
     tracing::info!(path = ?path, "PATH");
 
-    let cli = Cli::parse();
-    let config = load_config()?;
-    let portal = config.portal;
     let socket_path = PathBuf::from(cli.socket.unwrap_or_else(|| portal.socket_path.clone()));
 
     agent_portal::host::run_with_config_and_socket(

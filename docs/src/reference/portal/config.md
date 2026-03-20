@@ -12,6 +12,10 @@ Portal config lives under `[portal]` in `~/.agent-box.toml`.
   - used directly when `global = true`
   - ignored by `ab spawn` when `global = false`, because `ab` allocates a unique per-container socket path
 - `prompt_command` (string|null, default: unset)
+- Logging is controlled at process startup, not in config:
+  - `RUST_LOG=...` provides tracing filter control
+  - logs are written under `${XDG_STATE_HOME:-~/.local/state}/agent-box/logs/`
+  - each log filename is derived from the socket filename, replacing `.sock` with `.log`
 - `timeouts.request_ms` (u64, default: `0` = no timeout)
 - `timeouts.prompt_ms` (u64, default: `0` = no timeout)
 - `limits.max_inflight` (usize, default: `32`)

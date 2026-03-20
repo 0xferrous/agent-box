@@ -20,10 +20,20 @@ Find and fix common failures for `wl-paste`/`gh` wrappers and other Portal clien
    ```bash
    echo "$AGENT_PORTAL_SOCKET"
    ```
-4. Enable host logs:
+4. Enable host logging with `RUST_LOG`:
    ```bash
-   RUST_LOG=debug agent-portal-host
+   RUST_LOG=agent_portal=debug,agent_portal_host=trace agent-portal-host
    ```
+   When `agent-portal-host` is run directly, logs are visible in the terminal and also written to the log file. Managed hosts started by `ab spawn` log only to files.
+5. Inspect the log file:
+   - Log files live under:
+     ```text
+     ${XDG_STATE_HOME:-$HOME/.local/state}/agent-box/logs/
+     ```
+   - The log filename matches the socket filename, with `.sock` replaced by `.log`.
+   - Example: `portal.sock` -> `portal.log`
+   - In managed per-container mode (`[portal].global = false`), each spawned socket gets its own matching log file.
+   - Use `RUST_LOG=debug ab spawn ...` if you want more verbose managed-host logs.
 
 ## Common failures
 

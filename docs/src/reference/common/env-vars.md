@@ -14,6 +14,12 @@
 - `RUST_LOG`
   - Controls tracing filter for `agent-portal-host` and other Rust binaries using tracing subscriber.
 
+- `XDG_STATE_HOME`
+  - Used to resolve the default Portal log directory.
+  - Default Portal log directory: `$XDG_STATE_HOME/agent-box/logs/`
+  - Fallback when unset: `~/.local/state/agent-box/logs/`
+  - Each Portal log filename is derived from the socket filename, replacing `.sock` with `.log`
+
 ## Runtime passthrough
 
 Variables listed in `[runtime].env_passthrough` are copied from host into container at spawn time.
