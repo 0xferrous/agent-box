@@ -25,13 +25,32 @@ Policy mode is configured in `~/.agent-box.toml` via `portal.policy.defaults.gh_
 
 ## Logging
 
-`agent-portal-host` uses `tracing` + `RUST_LOG` filtering.
+`agent-portal-host` uses `tracing` and writes logs to stderr and a log file when run directly. Managed per-container Portal instances started by `ab spawn` write logs only to files.
+
+Default log file location:
+
+```text
+${XDG_STATE_HOME:-~/.local/state}/agent-box/logs/<socket-name>.log
+```
+
+The log filename is derived from the socket filename by replacing `.sock` with `.log`.
+
+Examples:
+
+```text
+portal.sock -> portal.log
+portal-12345-abc.sock -> portal-12345-abc.log
+```
+
+Use `RUST_LOG` for tracing filter control.
 
 Example:
 
 ```bash
-RUST_LOG=debug agent-portal-host
+RUST_LOG=agent_portal=debug,agent_portal_host=trace agent-portal-host
 ```
+
+Managed per-container Portal instances started by `ab spawn` also initialize logging this way, so each managed socket gets a matching per-instance log file.
 
 ## Development
 

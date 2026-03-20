@@ -37,9 +37,13 @@ fn maybe_start_managed_portal(
         return Ok(None);
     }
 
+    let socket_path = per_container_portal_socket_path();
+    let log_path = agent_portal::logging::init(None, Some(&socket_path), false)?;
+    eprintln!("managed portal log file: {}", log_path.display());
+
     Ok(Some(agent_portal::host::spawn_managed(
         config.portal.clone(),
-        per_container_portal_socket_path(),
+        socket_path,
     )?))
 }
 
