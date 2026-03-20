@@ -176,7 +176,7 @@ Remove all workspaces for a given repo ID
 Usage: ab dbg remove [OPTIONS] [REPO]
 
 Arguments:
-  [REPO]  Repository identifier (e.g., "fr/agent-box" or "agent-box")
+  [REPO]  Repository identifier or absolute source path (e.g., "agent-box", "fr/agent-box", or "/home/user/repos/myproject")
 
 Options:
       --dry-run     Show what would be deleted without actually deleting

@@ -3,9 +3,10 @@ use agent_box_common::config::{
     validate_config_or_err,
 };
 use agent_box_common::display::info;
-use agent_box_common::path::{WorkspaceStatus, WorkspaceType, scan_workspaces};
+use agent_box_common::path::{RepoIdentifier, WorkspaceStatus, WorkspaceType, scan_workspaces};
 use agent_box_common::repo::{
-    find_git_workdir, locate_repo, new_workspace, remove_repo, resolve_repo_id,
+    cleanup_git_worktrees, find_git_workdir, locate_repo, new_workspace, remove_repo,
+    resolve_repo_id,
 };
 use clap::{Parser, Subcommand};
 use eyre::Result;
@@ -163,7 +164,7 @@ enum DbgCommands {
     },
     /// Remove all workspaces for a given repo ID
     Remove {
-        /// Repository identifier (e.g., "fr/agent-box" or "agent-box")
+        /// Repository identifier or absolute source path (e.g., "agent-box", "fr/agent-box", or "/home/user/repos/myproject")
         #[arg(required_unless_present = "unresolved")]
         repo: Option<String>,
         /// Show what would be deleted without actually deleting
@@ -481,6 +482,12 @@ fn run() -> eyre::Result<()> {
                         let dir = ws.workspace_dir(&config);
                         if dir.exists() {
                             println!("Removing: {}", dir.display());
+                            // Attempt git worktree cleanup before deleting the directory.
+                            // For unresolved workspaces the source repo may still exist
+                            // (e.g., workspace is "unresolved" due to a base_repo_dir change).
+                            if ws.workspace_type == WorkspaceType::Git {
+                                cleanup_git_worktrees(&dir);
+                            }
                             if let Err(e) = std::fs::remove_dir_all(&dir) {
                                 eprintln!("  Failed to remove {}: {e}", dir.display());
                                 return Err(e.into());
@@ -495,7 +502,20 @@ fn run() -> eyre::Result<()> {
                     // clap's required_unless_present guarantees repo is Some
                     // here, but unwrap with a message for safety.
                     let repo = repo.expect("repo is required by clap unless --unresolved is set");
-                    let repo_id = locate_repo(&config, Some(&repo))?;
+                    let repo_id = if repo.starts_with('/') {
+                        // Absolute path: resolve directly without discovery.
+                        // This allows removing workspaces even when discovery
+                        // is not configured (e.g., base_repo_dir defaults to "/").
+                        // Canonicalize first to resolve symlinks and ".." components;
+                        // fall back to std::path::absolute if the path doesn't exist
+                        // (the repo may have been deleted).
+                        let path = std::path::Path::new(&repo);
+                        let clean_path =
+                            path.canonicalize().or_else(|_| std::path::absolute(path))?;
+                        RepoIdentifier::from_repo_path(&config, &clean_path)?
+                    } else {
+                        locate_repo(&config, Some(&repo))?
+                    };
 
                     // Show what will be removed (always, even if --force is used)
                     remove_repo(&config, &repo_id, true)?;

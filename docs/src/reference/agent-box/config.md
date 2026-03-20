@@ -224,7 +224,7 @@ If you remove `base_repo_dir` from your configuration (or change its value), exi
 To inspect and clean up:
 
 1. Run `ab dbg list --unresolved` to see which workspaces no longer resolve to a source repository.
-2. Run `ab dbg remove --unresolved` to delete the orphaned workspace directories.
+2. Run `ab dbg remove --unresolved` to delete all orphaned workspace directories, or `ab dbg remove /absolute/path/to/repo` to remove a specific one by its source path.
 
 Workspaces created via symlinked paths before canonicalization was introduced may also appear unresolved, since the canonical path differs from the original symlink path.
 

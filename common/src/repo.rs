@@ -355,10 +355,106 @@ fn get_session_name(session_name: Option<&str>) -> Result<String> {
     }
 }
 
-/// Remove all workspaces for a given repo ID
+/// Remove a git worktree by running `git worktree remove --force`.
+///
+/// Parses the session's `.git` file to locate the source repo, then
+/// delegates to `git worktree remove`. Returns:
+/// - `Ok(true)`: worktree was successfully removed.
+/// - `Ok(false)`: not applicable (no `.git` file, unparseable gitdir path, or source repo missing).
+/// - `Err`: I/O failure, malformed `.git` file, or `git worktree remove` command failed.
+pub fn remove_git_worktree(session_path: &Path) -> Result<bool> {
+    // Parse the .git file to find the source repo's git dir.
+    let dot_git = session_path.join(".git");
+    if !dot_git.is_file() {
+        return Ok(false);
+    }
+    let content = std::fs::read_to_string(&dot_git)?;
+    // Format: "gitdir: /path/to/repo/.git/worktrees/session-name"
+    let gitdir = content
+        .strip_prefix("gitdir: ")
+        .map(|s| s.trim())
+        .ok_or_else(|| eyre!("unexpected .git file format in {}", dot_git.display()))?;
+
+    // The source repo's .git dir is two levels up from the worktrees entry:
+    // /repo/.git/worktrees/session -> /repo/.git
+    let git_dir = Path::new(gitdir)
+        .parent() // /repo/.git/worktrees
+        .and_then(|p| p.parent()); // /repo/.git
+
+    let Some(git_dir) = git_dir else {
+        return Ok(false);
+    };
+
+    if !git_dir.exists() {
+        // Source repo is gone; cannot clean up worktree metadata.
+        return Ok(false);
+    }
+
+    // Run git worktree remove. Use --force since the worktree may
+    // have uncommitted changes (we are removing it regardless).
+    let output = std::process::Command::new("git")
+        .args(["worktree", "remove", "--force"])
+        .arg(session_path)
+        .current_dir(git_dir.parent().unwrap_or(git_dir))
+        .output()?;
+
+    if output.status.success() {
+        Ok(true)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(eyre!("git worktree remove failed: {}", stderr.trim()))
+    }
+}
+
+/// Attempt to clean up git worktree metadata for all sessions in a directory.
+///
+/// Iterates subdirectories, checks for `.git` files (indicating linked worktrees),
+/// and calls `remove_git_worktree` on each. Returns `true` if all sessions were
+/// cleaned up successfully, `false` if any failed (source repo missing, git error, etc.).
+/// Prints per-session status messages.
+pub fn cleanup_git_worktrees(workspace_dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(workspace_dir) else {
+        return true; // Nothing to clean up if we can't read the directory.
+    };
+    let mut all_ok = true;
+    for entry in entries.flatten() {
+        let session_path = entry.path();
+        if session_path.join(".git").is_file() {
+            match remove_git_worktree(&session_path) {
+                Ok(true) => println!("  Pruned git worktree: {}", session_path.display()),
+                Ok(false) => {
+                    println!(
+                        "  Note: could not clean up worktree metadata for {}",
+                        session_path.display()
+                    );
+                    println!(
+                        "    If the source repo still exists, run `git worktree prune` in the source repo."
+                    );
+                    all_ok = false;
+                }
+                Err(e) => {
+                    eprintln!(
+                        "  Warning: failed to prune worktree {}: {e}",
+                        session_path.display()
+                    );
+                    all_ok = false;
+                }
+            }
+        }
+    }
+    all_ok
+}
+
+/// Remove all workspaces for a given repo ID.
+///
+/// For git workspaces, attempts to clean up worktree metadata via
+/// `git worktree remove --force` for each session before deleting the
+/// directory. If the source repo is missing, prints a note suggesting
+/// `git worktree prune`.
 pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> Result<()> {
-    let paths_to_remove: Vec<(&str, PathBuf)> = vec![
+    let paths_to_remove: Vec<(WorkspaceType, &str, PathBuf)> = vec![
         (
+            WorkspaceType::Git,
             "Git worktrees",
             config
                 .workspace_dir
@@ -366,6 +462,7 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
                 .join(repo_id.relative_path()),
         ),
         (
+            WorkspaceType::Jj,
             "JJ workspaces",
             config
                 .workspace_dir
@@ -378,10 +475,10 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
     println!("\nThe following directories will be removed:");
 
     let mut found_any = false;
-    for (label, path) in &paths_to_remove {
+    for (_, label, path) in &paths_to_remove {
         if path.exists() {
             found_any = true;
-            println!("  [{}] {}", label, path.display());
+            println!("  [{label}] {}", path.display());
         }
     }
 
@@ -396,9 +493,15 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
     }
 
     // Remove all existing directories
-    for (label, path) in &paths_to_remove {
+    for (wtype, label, path) in &paths_to_remove {
         if path.exists() {
-            println!("\nRemoving {}: {}", label, path.display());
+            println!("\nRemoving {label}: {}", path.display());
+
+            // Clean up git worktree metadata for each session before deleting.
+            if *wtype == WorkspaceType::Git {
+                cleanup_git_worktrees(path);
+            }
+
             std::fs::remove_dir_all(path)?;
             println!("  ✓ Removed");
         }
@@ -685,6 +788,131 @@ mod tests {
             err_msg.contains("bare") || err_msg.contains("no working directory"),
             "error should mention bare or no working directory, got: {err_msg}",
         );
+
+        // Cleanup
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_remove_git_worktree_cleans_metadata() {
+        // Create a real git repo, add a worktree, then call
+        // remove_git_worktree and verify the worktree entry is gone.
+        let tmp = temp_test_dir("rm-worktree");
+        let repo_dir = tmp.join("my-repo");
+        let worktree_dir = tmp.join("my-worktree");
+        git_init_with_commit(&repo_dir);
+
+        // Create a linked worktree
+        let output = Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                worktree_dir.to_str().unwrap(),
+                "-b",
+                "rm-test-branch",
+            ])
+            .current_dir(&repo_dir)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git worktree add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Verify the worktree metadata exists before removal
+        let worktree_meta = repo_dir.join(".git").join("worktrees").join("my-worktree");
+        assert!(
+            worktree_meta.exists(),
+            "worktree metadata should exist before removal"
+        );
+
+        // Call remove_git_worktree
+        let result = remove_git_worktree(&worktree_dir).unwrap();
+        assert!(result, "remove_git_worktree should return true on success");
+
+        // The worktree directory should be removed by git worktree remove
+        assert!(
+            !worktree_dir.exists(),
+            "worktree directory should be removed"
+        );
+
+        // The .git/worktrees entry should also be gone
+        assert!(
+            !worktree_meta.exists(),
+            "worktree metadata should be removed from .git/worktrees/"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_remove_git_worktree_missing_source() {
+        // Create a fake .git file pointing to a nonexistent gitdir.
+        // remove_git_worktree should return Ok(false) without erroring.
+        let tmp = temp_test_dir("rm-worktree-missing");
+        let session_dir = tmp.join("fake-session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(
+            session_dir.join(".git"),
+            "gitdir: /nonexistent/repo/.git/worktrees/fake-session",
+        )
+        .unwrap();
+
+        let result = remove_git_worktree(&session_dir).unwrap();
+        assert!(!result, "should return false when source repo is missing");
+
+        // Cleanup
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_remove_git_worktree_not_a_worktree() {
+        // Call on a directory without a .git file.
+        // remove_git_worktree should return Ok(false).
+        let tmp = temp_test_dir("rm-worktree-none");
+        let plain_dir = tmp.join("plain-dir");
+        std::fs::create_dir_all(&plain_dir).unwrap();
+
+        let result = remove_git_worktree(&plain_dir).unwrap();
+        assert!(!result, "should return false for non-worktree directory");
+
+        // Cleanup
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_remove_git_worktree_malformed_git_file() {
+        // A .git file without the "gitdir: " prefix should return Err.
+        let tmp = temp_test_dir("rm-worktree-malformed");
+        let session_dir = tmp.join("bad-session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(session_dir.join(".git"), "garbage content").unwrap();
+
+        let result = remove_git_worktree(&session_dir);
+        assert!(result.is_err(), "should return Err for malformed .git file");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("unexpected .git file format"),
+            "error should mention unexpected format, got: {err_msg}"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_remove_git_worktree_short_gitdir_path() {
+        // A .git file with a gitdir that has fewer than 2 parent components
+        // should return Ok(false) since we can't determine the source repo.
+        let tmp = temp_test_dir("rm-worktree-short");
+        let session_dir = tmp.join("short-session");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(session_dir.join(".git"), "gitdir: /foo").unwrap();
+
+        let result = remove_git_worktree(&session_dir).unwrap();
+        assert!(!result, "should return false for short gitdir path");
 
         // Cleanup
         std::fs::remove_dir_all(&tmp).ok();
