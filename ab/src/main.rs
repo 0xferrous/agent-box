@@ -106,13 +106,13 @@ enum Commands {
         /// Mount source directory as read-only
         #[arg(long)]
         ro: bool,
-        /// Additional mount (home-relative). Format: [MODE:]PATH or [MODE:]SRC:DST
+        /// Additional mount (home-relative). Format: \[MODE:\]PATH or \[MODE:\]SRC:DST
         /// MODE is ro, rw, or o (default: rw). Paths use ~ for home directory.
         /// Relative host source paths are resolved against the current working directory.
         /// Example: -m ~/.config/git -m ro:~/secrets -m rw:~/data:/app/data -m ../pierre
         #[arg(long, short = 'm', value_name = "MOUNT")]
         mount: Vec<String>,
-        /// Additional mount (absolute). Format: [MODE:]PATH or [MODE:]SRC:DST
+        /// Additional mount (absolute). Format: \[MODE:\]PATH or \[MODE:\]SRC:DST
         /// MODE is ro, rw, or o (default: rw). Same path used on host and container.
         /// Relative host source paths are resolved against the current working directory.
         /// Example: -M /nix/store -M ro:/etc/hosts -M ../shared
@@ -124,7 +124,7 @@ enum Commands {
         #[arg(long, short = 'p', value_name = "PROFILE")]
         profile: Vec<String>,
         /// Port mapping to expose (can be specified multiple times).
-        /// Format: [HOST_IP:]HOST_PORT:CONTAINER_PORT or just CONTAINER_PORT.
+        /// Format: \[HOST_IP:\]HOST_PORT:CONTAINER_PORT or just CONTAINER_PORT.
         /// Example: -P 8080:8080 -P 3000 -P 127.0.0.1:9090:9090
         #[arg(long, short = 'P', value_name = "PORT")]
         port: Vec<String>,
@@ -137,7 +137,7 @@ enum Commands {
         #[arg(long)]
         no_skip: bool,
         /// Network mode to use (e.g. host, bridge, none, or a container name).
-        /// Passed directly as --network=<MODE> to the container runtime.
+        /// Passed directly as `--network=MODE` to the container runtime.
         #[arg(long, value_name = "MODE")]
         network: Option<String>,
     },

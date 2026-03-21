@@ -538,12 +538,20 @@ pub fn scan_workspaces(config: &Config) -> Result<Vec<WorkspaceInfo>> {
             // When base_repo_dir is "/", this prepends "/" to the relative
             // path, reconstructing the original absolute path.
             let source_path = config.base_repo_dir.join(&relative_path);
-            // Use is_dir() rather than exists() because a regular file
-            // at the source path is not a valid repository.
-            let status = if source_path.is_dir() {
-                WorkspaceStatus::Healthy
-            } else {
-                WorkspaceStatus::Unresolved
+            // Check for the VCS marker rather than just testing whether the
+            // directory exists; a plain directory with no marker is not a repo.
+            // Using .exists() instead of .is_dir() because .git can be either
+            // a directory (normal repo) or a file (worktree).
+            let status = {
+                let marker = match wtype {
+                    WorkspaceType::Git => ".git",
+                    WorkspaceType::Jj => ".jj",
+                };
+                if source_path.join(marker).exists() {
+                    WorkspaceStatus::Healthy
+                } else {
+                    WorkspaceStatus::Unresolved
+                }
             };
 
             results.push(WorkspaceInfo {
@@ -826,8 +834,8 @@ mod tests {
         let workspace_dir = temp_dir.join("workspaces");
         let source_repo = temp_dir.join("source-repo");
 
-        // Create the source repo so it appears "healthy"
-        std::fs::create_dir_all(&source_repo).unwrap();
+        // Create the source repo with a .git directory so it appears "healthy"
+        std::fs::create_dir_all(source_repo.join(".git")).unwrap();
 
         // Create workspace structure: {workspace_dir}/git/{relative_path}/{session}/.git
         // Use base_repo_dir = temp_dir so the relative path is "source-repo"
@@ -889,7 +897,7 @@ mod tests {
             std::env::temp_dir().join(format!("ab-test-dbg-submodule-{}", std::process::id()));
         let workspace_dir = temp_dir.join("workspaces");
         let source_repo = temp_dir.join("my-repo");
-        std::fs::create_dir_all(&source_repo).unwrap();
+        std::fs::create_dir_all(source_repo.join(".git")).unwrap();
 
         // Create a session with a .git file marker
         let session_dir = workspace_dir
@@ -941,8 +949,8 @@ mod tests {
         let workspace_dir = temp_dir.join("workspaces");
         let source_repo = temp_dir.join("my-jj-repo");
 
-        // Create the source repo so it appears "healthy"
-        std::fs::create_dir_all(&source_repo).unwrap();
+        // Create the source repo with a .jj directory so it appears "healthy"
+        std::fs::create_dir_all(source_repo.join(".jj")).unwrap();
 
         // Create jj workspace structure:
         // {workspace_dir}/jj/{relative_path}/{session}/.jj/working_copy/
@@ -1006,6 +1014,86 @@ mod tests {
         let repos = RepoIdentifier::discover_repo_ids(&config).unwrap();
         assert_eq!(repos.len(), 1, "should find exactly one valid repo");
         assert_eq!(repos[0].relative_path(), Path::new("valid-repo"));
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_scan_workspaces_plain_dir_is_unresolved() {
+        // A source path that exists as a plain directory (no .git marker)
+        // should be reported as Unresolved, not Healthy.
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ab-test-plain-dir-unresolved-{}",
+            std::process::id()
+        ));
+        let workspace_dir = temp_dir.join("workspaces");
+        let source_repo = temp_dir.join("plain-dir");
+
+        // Create the directory without any VCS marker
+        std::fs::create_dir_all(&source_repo).unwrap();
+
+        // Create a session so scan_workspaces finds something
+        let repo_ws_dir = workspace_dir
+            .join(WorkspaceType::Git.as_str())
+            .join("plain-dir");
+        create_git_session_marker(&repo_ws_dir.join("session-1"));
+
+        let config = make_test_config_with(
+            temp_dir.canonicalize().unwrap(),
+            true,
+            workspace_dir.canonicalize().unwrap(),
+        );
+
+        let workspaces = scan_workspaces(&config).unwrap();
+        assert_eq!(workspaces.len(), 1);
+        assert_eq!(
+            workspaces[0].status,
+            WorkspaceStatus::Unresolved,
+            "a plain directory without .git should be Unresolved"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_scan_workspaces_git_file_is_healthy() {
+        // A source path with a .git *file* (as used by worktrees) should be
+        // reported as Healthy, confirming that the .exists() check handles
+        // file-based .git markers correctly.
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab-test-git-file-healthy-{}", std::process::id()));
+        let workspace_dir = temp_dir.join("workspaces");
+        let source_repo = temp_dir.join("worktree-repo");
+
+        // Create the source path with a .git file (not a directory)
+        std::fs::create_dir_all(&source_repo).unwrap();
+        std::fs::write(
+            source_repo.join(".git"),
+            "gitdir: /some/parent/.git/worktrees/worktree-repo",
+        )
+        .unwrap();
+
+        // Create a session so scan_workspaces finds something
+        let repo_ws_dir = workspace_dir
+            .join(WorkspaceType::Git.as_str())
+            .join("worktree-repo");
+        create_git_session_marker(&repo_ws_dir.join("session-1"));
+
+        let config = make_test_config_with(
+            temp_dir.canonicalize().unwrap(),
+            true,
+            workspace_dir.canonicalize().unwrap(),
+        );
+
+        let workspaces = scan_workspaces(&config).unwrap();
+        assert_eq!(workspaces.len(), 1);
+        assert_eq!(
+            workspaces[0].status,
+            WorkspaceStatus::Healthy,
+            "a .git file (worktree marker) should be treated as Healthy"
+        );
 
         // Cleanup
         std::fs::remove_dir_all(&temp_dir).ok();

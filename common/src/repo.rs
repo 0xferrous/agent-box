@@ -377,7 +377,13 @@ pub fn remove_git_worktree(session_path: &Path) -> Result<bool> {
 
     // The source repo's .git dir is two levels up from the worktrees entry:
     // /repo/.git/worktrees/session -> /repo/.git
-    let git_dir = Path::new(gitdir)
+    //
+    // session_path is the correct base because dot_git is session_path.join(".git"),
+    // so session_path is the .git file's parent directory. Path::join handles the
+    // absolute case correctly (discards the base when the argument is absolute),
+    // so this is safe for both absolute and relative gitdir values.
+    let full_path = std::path::absolute(session_path.join(gitdir))?;
+    let git_dir = full_path
         .parent() // /repo/.git/worktrees
         .and_then(|p| p.parent()); // /repo/.git
 
@@ -521,24 +527,30 @@ mod tests {
         std::env::temp_dir().join(format!("ab-test-{name}-{}", std::process::id()))
     }
 
+    /// Helper: build a git Command that is isolated from the global Git config.
+    /// Sets GIT_CONFIG_NOSYSTEM and HOME so tests do not depend on the host
+    /// user's gitconfig (which may set init.defaultBranch, aliases, etc.).
+    fn git_cmd(dir: &Path) -> Command {
+        let mut cmd = Command::new("git");
+        cmd.current_dir(dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("HOME", dir);
+        cmd
+    }
+
     /// Helper: run git init in the given directory and make an initial commit
     /// so that worktrees can be created (git worktree add requires at least
     /// one commit).
     fn git_init_with_commit(dir: &Path) {
         std::fs::create_dir_all(dir).unwrap();
-        let output = Command::new("git")
-            .args(["init"])
-            .current_dir(dir)
-            .output()
-            .unwrap();
+        let output = git_cmd(dir).args(["init"]).output().unwrap();
         assert!(
             output.status.success(),
             "git init failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let output = Command::new("git")
+        let output = git_cmd(dir)
             .args(["config", "user.email", "test@test.com"])
-            .current_dir(dir)
             .output()
             .unwrap();
         assert!(
@@ -546,9 +558,8 @@ mod tests {
             "git config user.email failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let output = Command::new("git")
+        let output = git_cmd(dir)
             .args(["config", "user.name", "Test"])
-            .current_dir(dir)
             .output()
             .unwrap();
         assert!(
@@ -557,9 +568,8 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         // Create an initial commit so worktree add works
-        let output = Command::new("git")
+        let output = git_cmd(dir)
             .args(["commit", "--allow-empty", "-m", "init"])
-            .current_dir(dir)
             .output()
             .unwrap();
         assert!(
@@ -594,7 +604,7 @@ mod tests {
         git_init_with_commit(&repo_dir);
 
         // Create a linked worktree
-        Command::new("git")
+        git_cmd(&repo_dir)
             .args([
                 "worktree",
                 "add",
@@ -602,7 +612,6 @@ mod tests {
                 "-b",
                 "test-branch",
             ])
-            .current_dir(&repo_dir)
             .output()
             .unwrap();
 
@@ -628,7 +637,7 @@ mod tests {
         git_init_with_commit(&repo_dir);
 
         // Create a linked worktree
-        Command::new("git")
+        git_cmd(&repo_dir)
             .args([
                 "worktree",
                 "add",
@@ -636,7 +645,6 @@ mod tests {
                 "-b",
                 "test-branch",
             ])
-            .current_dir(&repo_dir)
             .output()
             .unwrap();
 
@@ -667,7 +675,7 @@ mod tests {
         let worktree_dir = tmp.join("my-worktree");
         git_init_with_commit(&repo_dir);
 
-        Command::new("git")
+        git_cmd(&repo_dir)
             .args([
                 "worktree",
                 "add",
@@ -675,7 +683,6 @@ mod tests {
                 "-b",
                 "config-branch",
             ])
-            .current_dir(&repo_dir)
             .output()
             .unwrap();
 
@@ -701,28 +708,25 @@ mod tests {
         let worktree_dir = tmp.join("my-worktree");
 
         std::fs::create_dir_all(&bare_dir).unwrap();
-        Command::new("git")
+        git_cmd(&bare_dir)
             .args(["init", "--bare"])
-            .current_dir(&bare_dir)
             .output()
             .unwrap();
 
         // Create a linked worktree from the bare repo. Bare repos need
         // a commit to create worktrees, so create one via a detached HEAD.
-        Command::new("git")
+        git_cmd(&bare_dir)
             .args(["config", "user.email", "test@test.com"])
-            .current_dir(&bare_dir)
             .output()
             .unwrap();
-        Command::new("git")
+        git_cmd(&bare_dir)
             .args(["config", "user.name", "Test"])
-            .current_dir(&bare_dir)
             .output()
             .unwrap();
 
         // Create a temporary non-bare clone to make a commit, then push
         let clone_dir = tmp.join("clone");
-        Command::new("git")
+        git_cmd(&tmp)
             .args([
                 "clone",
                 bare_dir.to_str().unwrap(),
@@ -730,31 +734,26 @@ mod tests {
             ])
             .output()
             .unwrap();
-        Command::new("git")
+        git_cmd(&clone_dir)
             .args(["config", "user.email", "test@test.com"])
-            .current_dir(&clone_dir)
             .output()
             .unwrap();
-        Command::new("git")
+        git_cmd(&clone_dir)
             .args(["config", "user.name", "Test"])
-            .current_dir(&clone_dir)
             .output()
             .unwrap();
-        Command::new("git")
+        git_cmd(&clone_dir)
             .args(["commit", "--allow-empty", "-m", "init"])
-            .current_dir(&clone_dir)
             .output()
             .unwrap();
-        Command::new("git")
+        git_cmd(&clone_dir)
             .args(["push", "origin", "HEAD:main"])
-            .current_dir(&clone_dir)
             .output()
             .unwrap();
 
         // Now create a linked worktree from the bare repo
-        let wt_result = Command::new("git")
+        let wt_result = git_cmd(&bare_dir)
             .args(["worktree", "add", worktree_dir.to_str().unwrap(), "main"])
-            .current_dir(&bare_dir)
             .output()
             .unwrap();
 
@@ -802,7 +801,7 @@ mod tests {
         git_init_with_commit(&repo_dir);
 
         // Create a linked worktree
-        let output = Command::new("git")
+        let output = git_cmd(&repo_dir)
             .args([
                 "worktree",
                 "add",
@@ -810,7 +809,6 @@ mod tests {
                 "-b",
                 "rm-test-branch",
             ])
-            .current_dir(&repo_dir)
             .output()
             .unwrap();
         assert!(
@@ -912,6 +910,82 @@ mod tests {
 
         let result = remove_git_worktree(&session_dir).unwrap();
         assert!(!result, "should return false for short gitdir path");
+
+        // Cleanup
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_remove_git_worktree_relative_gitdir() {
+        // Verify that remove_git_worktree handles relative gitdir paths
+        // correctly, as produced by `git worktree add` when
+        // `worktree.useRelativePaths=true` is set.
+        let tmp = temp_test_dir("rm-worktree-rel");
+        let repo_dir = tmp.join("my-repo");
+        let worktree_dir = tmp.join("my-worktree");
+        git_init_with_commit(&repo_dir);
+
+        // Create a linked worktree
+        let output = git_cmd(&repo_dir)
+            .args([
+                "worktree",
+                "add",
+                worktree_dir.to_str().unwrap(),
+                "-b",
+                "rel-test-branch",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git worktree add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        // Read the .git file to get the absolute gitdir path, then
+        // rewrite it with a relative path to simulate
+        // worktree.useRelativePaths=true.
+        let dot_git = worktree_dir.join(".git");
+        let content = std::fs::read_to_string(&dot_git).unwrap();
+        let abs_gitdir = content.strip_prefix("gitdir: ").unwrap().trim();
+
+        // Compute relative path from worktree_dir to the gitdir.
+        // Both worktree_dir and repo_dir are siblings under tmp, so
+        // the relative path from my-worktree to
+        // my-repo/.git/worktrees/my-worktree is:
+        // ../my-repo/.git/worktrees/my-worktree
+        let abs_gitdir_path = Path::new(abs_gitdir);
+        let rel_gitdir = abs_gitdir_path
+            .strip_prefix(&tmp)
+            .expect("gitdir should be under tmp");
+        let rel_gitdir = Path::new("..").join(rel_gitdir);
+        std::fs::write(&dot_git, format!("gitdir: {}", rel_gitdir.display())).unwrap();
+
+        // Verify the worktree metadata exists before removal.
+        let worktree_meta = repo_dir.join(".git").join("worktrees").join("my-worktree");
+        assert!(
+            worktree_meta.exists(),
+            "worktree metadata should exist before removal"
+        );
+
+        // Call remove_git_worktree with the relative gitdir.
+        let result = remove_git_worktree(&worktree_dir).unwrap();
+        assert!(
+            result,
+            "remove_git_worktree should succeed with relative gitdir"
+        );
+
+        // The worktree directory should be removed.
+        assert!(
+            !worktree_dir.exists(),
+            "worktree directory should be removed"
+        );
+
+        // The .git/worktrees entry should also be gone.
+        assert!(
+            !worktree_meta.exists(),
+            "worktree metadata should be removed from .git/worktrees/"
+        );
 
         // Cleanup
         std::fs::remove_dir_all(&tmp).ok();
