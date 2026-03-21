@@ -488,7 +488,6 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
     }
 
     if dry_run {
-        println!("\n[DRY RUN] No files were actually deleted.");
         return Ok(());
     }
 

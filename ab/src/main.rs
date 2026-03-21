@@ -520,8 +520,8 @@ fn run() -> eyre::Result<()> {
                     // Show what will be removed (always, even if --force is used)
                     remove_repo(&config, &repo_id, true)?;
 
-                    // If dry-run, we're done
                     if dry_run {
+                        println!("\n[DRY RUN] No files were actually deleted.");
                         return Ok(());
                     }
 
