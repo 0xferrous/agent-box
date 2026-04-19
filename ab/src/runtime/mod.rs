@@ -42,9 +42,81 @@ pub(crate) fn print_command(command: &str, args: &[String]) {
     }
 }
 
+/// Convert an arbitrary path component into a container-name-safe segment.
+fn sanitize_container_name_component(component: &str) -> String {
+    let cleaned = component
+        .chars()
+        .map(|ch| {
+            let ch = ch.to_ascii_lowercase();
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+
+    let cleaned = cleaned
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    if cleaned.is_empty() {
+        "workspace".to_string()
+    } else {
+        cleaned
+    }
+}
+
+/// Derive a human-readable, unique container name from the workspace path.
+///
+/// Local mode uses the current directory name plus a timestamp suffix. Session
+/// mode uses the repo directory name and session name plus the same suffix.
+/// Example: `ab-agent-box-main-1713573890`.
+fn derive_container_name(_config: &Config, workspace_path: &Path, local: bool) -> String {
+    let label = if local {
+        workspace_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(sanitize_container_name_component)
+            .unwrap_or_else(|| "workspace".to_string())
+    } else {
+        let repo = workspace_path
+            .parent()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .map(sanitize_container_name_component)
+            .unwrap_or_else(|| "workspace".to_string());
+        let session = workspace_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(sanitize_container_name_component)
+            .unwrap_or_else(|| "workspace".to_string());
+        format!("{}-{}", repo, session)
+    };
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let suffix_len = suffix.to_string().len();
+
+    // Keep enough room for the label and timestamp.
+    let max_label_len = 63usize.saturating_sub("ab--".len() + suffix_len);
+    let label = if label.len() > max_label_len {
+        label[..max_label_len].trim_matches('-').to_string()
+    } else {
+        label
+    };
+
+    format!("ab-{}-{}", label, suffix)
+}
+
 /// Configuration for running a container
 #[derive(Debug, Clone)]
 pub struct ContainerConfig {
+    pub name: String,
     pub image: String,
     pub entrypoint: Option<Vec<String>>,
     pub command: Option<Vec<String>>,
@@ -377,6 +449,7 @@ pub fn build_container_config(
     }
 
     Ok(ContainerConfig {
+        name: derive_container_name(config, workspace_path, local),
         image: config.runtime.image.clone(),
         entrypoint,
         command,
@@ -1310,6 +1383,74 @@ mod tests {
         );
         assert_eq!(parse_mode_prefix("~/data"), None);
         assert_eq!(parse_mode_prefix("/nix/store"), None);
+    }
+
+    #[test]
+    fn test_derive_container_name_uses_workspace_path() {
+        use agent_box_common::config::Config;
+        use std::collections::HashMap;
+
+        let config = Config {
+            workspace_dir: PathBuf::from("/workspaces"),
+            base_repo_dir: PathBuf::from("/repos"),
+            default_profile: None,
+            profiles: HashMap::new(),
+            runtime: agent_box_common::config::RuntimeConfig {
+                backend: "podman".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                skip_mounts: vec![],
+            },
+            context: String::new(),
+            context_path: "/tmp/context".to_string(),
+            portal: agent_box_common::portal::PortalConfig::default(),
+        };
+
+        let workspace_path = PathBuf::from("/workspaces/git/fr/agent-box/main");
+        let name = derive_container_name(&config, &workspace_path, false);
+
+        assert!(name.starts_with("ab-agent-box-main-"));
+        assert!(name.len() <= 63);
+    }
+
+    #[test]
+    fn test_derive_container_name_uses_local_prefix() {
+        use agent_box_common::config::Config;
+        use std::collections::HashMap;
+
+        let config = Config {
+            workspace_dir: PathBuf::from("/workspaces"),
+            base_repo_dir: PathBuf::from("/repos"),
+            default_profile: None,
+            profiles: HashMap::new(),
+            runtime: agent_box_common::config::RuntimeConfig {
+                backend: "podman".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                skip_mounts: vec![],
+            },
+            context: String::new(),
+            context_path: "/tmp/context".to_string(),
+            portal: agent_box_common::portal::PortalConfig::default(),
+        };
+
+        let workspace_path = std::env::temp_dir()
+            .join("agent-box-repo")
+            .join("agent-box-local-name-test");
+        let name = derive_container_name(&config, &workspace_path, true);
+
+        assert!(name.starts_with("ab-agent-box-local-name-test-"));
+        assert!(name.len() <= 63);
     }
 
     #[test]

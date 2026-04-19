@@ -170,6 +170,7 @@ impl ContainerBackend for DockerRuntime {
 
     fn spawn_container(&self, config: &ContainerConfig) -> Result<()> {
         eprintln!("DEBUG: Creating container with Docker:");
+        eprintln!("  Name: {}", config.name);
         eprintln!("  Image: {}", config.image);
         eprintln!("  Entrypoint: {:?}", config.entrypoint);
         eprintln!("  Command: {:?}", config.command);
@@ -183,6 +184,8 @@ impl ContainerBackend for DockerRuntime {
 
         let mut args = vec![
             "run".to_string(),
+            "--name".to_string(),
+            config.name.clone(),
             "--rm".to_string(),
             "-it".to_string(),
             "--user".to_string(),

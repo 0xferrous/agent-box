@@ -171,6 +171,7 @@ impl ContainerBackend for PodmanRuntime {
 
     fn spawn_container(&self, config: &ContainerConfig) -> Result<()> {
         eprintln!("DEBUG: Creating container with Podman:");
+        eprintln!("  Name: {}", config.name);
         eprintln!("  Image: {}", config.image);
         eprintln!("  Entrypoint: {:?}", config.entrypoint);
         eprintln!("  Command: {:?}", config.command);
@@ -184,6 +185,8 @@ impl ContainerBackend for PodmanRuntime {
 
         let mut args = vec![
             "run".to_string(),
+            "--name".to_string(),
+            config.name.clone(),
             "--rm".to_string(),
             "-it".to_string(),
             "--userns".to_string(),
