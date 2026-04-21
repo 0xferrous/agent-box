@@ -20,7 +20,7 @@ This page explains the runtime flow behind `ab new` and `ab spawn`.
 2. Load and validate layered configuration.
 3. Resolve profile graph (`default_profile` + CLI profiles).
 4. Build runtime-specific container configuration, including a deterministic human-readable container name derived from the workspace path.
-5. Apply mounts/env/ports/hosts/network options.
+5. Apply mounts/env/ports/hosts/network options, including automatic terminal env passthrough (`TERM`, `COLORTERM`) and terminfo mounting when available.
 6. If portal is enabled:
    - `portal.global = true`: mount configured portal socket and set `AGENT_PORTAL_SOCKET`.
    - `portal.global = false`: start a per-container in-process portal host, mount its socket, and set `AGENT_PORTAL_SOCKET`.

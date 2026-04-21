@@ -23,3 +23,5 @@
 ## Runtime passthrough
 
 Variables listed in `[runtime].env_passthrough` are copied from host into container at spawn time.
+
+`ab spawn` also forwards `TERM` and `COLORTERM` automatically when present. If the host has a matching compiled terminfo entry for `TERM`, `ab` mounts the terminfo directory read-only into the container and sets `TERMINFO` to that mounted path.

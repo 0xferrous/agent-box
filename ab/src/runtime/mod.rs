@@ -113,6 +113,44 @@ fn derive_container_name(_config: &Config, workspace_path: &Path, local: bool) -
     format!("ab-{}-{}", label, suffix)
 }
 
+fn terminfo_entry_paths(term: &str) -> impl Iterator<Item = PathBuf> {
+    let first = term.chars().next().unwrap_or('_').to_string();
+    [PathBuf::from(&first).join(term), PathBuf::from(term)].into_iter()
+}
+
+fn find_terminfo_dir(term: &str) -> Option<PathBuf> {
+    let mut dirs = Vec::new();
+
+    if let Ok(dir) = std::env::var("TERMINFO")
+        && !dir.is_empty()
+    {
+        dirs.push(PathBuf::from(dir));
+    }
+
+    if let Ok(dirs_var) = std::env::var("TERMINFO_DIRS") {
+        dirs.extend(
+            dirs_var
+                .split(':')
+                .filter(|entry| !entry.is_empty())
+                .map(PathBuf::from),
+        );
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        dirs.push(PathBuf::from(home).join(".terminfo"));
+    }
+
+    dirs.extend([
+        PathBuf::from("/run/current-system/sw/share/terminfo"),
+        PathBuf::from("/etc/terminfo"),
+        PathBuf::from("/lib/terminfo"),
+        PathBuf::from("/usr/share/terminfo"),
+    ]);
+
+    dirs.into_iter()
+        .find(|dir| terminfo_entry_paths(term).any(|relative| dir.join(relative).exists()))
+}
+
 /// Configuration for running a container
 #[derive(Debug, Clone)]
 pub struct ContainerConfig {
@@ -365,6 +403,12 @@ pub fn build_container_config(
         format!("USER={}", username),
         format!("HOME=/home/{}", username),
     ];
+
+    for var_name in ["TERM", "COLORTERM"] {
+        if let Ok(value) = std::env::var(var_name) {
+            env.push(format!("{}={}", var_name, value));
+        }
+    }
     // Use env from resolved profile (includes runtime.env + profile envs)
     env.extend(resolved_profile.env.iter().cloned());
 
@@ -378,6 +422,13 @@ pub fn build_container_config(
                 var_name
             );
         }
+    }
+
+    if let Ok(term) = std::env::var("TERM")
+        && let Some(terminfo_dir) = find_terminfo_dir(&term)
+    {
+        binds.push(format_bind(&terminfo_dir, &terminfo_dir, MountMode::Ro));
+        env.push(format!("TERMINFO={}", terminfo_dir.display()));
     }
 
     // Mount portal socket into container (if enabled and socket exists)
@@ -1854,6 +1905,109 @@ mod tests {
                 .iter()
                 .any(|v| v.starts_with("AGENT_PORTAL_SOCKET="))
         );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_build_container_config_passes_through_terminal_env_and_terminfo() {
+        use agent_box_common::config::{Config, ResolvedProfile, RuntimeConfig};
+        use std::collections::HashMap;
+        use std::fs;
+        use std::path::PathBuf;
+
+        let temp_dir = std::env::temp_dir().join(format!("ab_terminfo_{}", std::process::id()));
+        let workspace_path = temp_dir.join("workspace");
+        let terminfo_dir = temp_dir.join("terminfo");
+        let terminfo_entry = terminfo_dir.join("x").join("xterm-kitty");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&workspace_path).unwrap();
+        fs::create_dir_all(terminfo_entry.parent().unwrap()).unwrap();
+        fs::write(&terminfo_entry, b"fake terminfo").unwrap();
+
+        let old_term = std::env::var_os("TERM");
+        let old_colorterm = std::env::var_os("COLORTERM");
+        let old_terminfo = std::env::var_os("TERMINFO");
+
+        unsafe {
+            std::env::set_var("TERM", "xterm-kitty");
+            std::env::set_var("COLORTERM", "truecolor");
+            std::env::set_var("TERMINFO", &terminfo_dir);
+        }
+
+        let config = Config {
+            workspace_dir: PathBuf::from("/workspaces"),
+            base_repo_dir: PathBuf::from("/repos"),
+            default_profile: None,
+            profiles: HashMap::new(),
+            runtime: RuntimeConfig {
+                backend: "podman".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                skip_mounts: vec![],
+            },
+            context: String::new(),
+            context_path: "/tmp/context".to_string(),
+            portal: agent_box_common::portal::PortalConfig::default(),
+        };
+
+        let container_config = build_container_config(
+            &config,
+            &workspace_path,
+            &workspace_path,
+            true,
+            false,
+            None,
+            &ResolvedProfile::default(),
+            &[],
+            &[],
+            &[],
+            None,
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        assert!(container_config.env.iter().any(|v| v == "TERM=xterm-kitty"));
+        assert!(
+            container_config
+                .env
+                .iter()
+                .any(|v| v == "COLORTERM=truecolor")
+        );
+        assert!(
+            container_config
+                .env
+                .iter()
+                .any(|v| v == &format!("TERMINFO={}", terminfo_dir.display()))
+        );
+        assert!(
+            container_config
+                .mounts
+                .iter()
+                .any(|m| m == &format!("{}:{}:ro", terminfo_dir.display(), terminfo_dir.display()))
+        );
+
+        unsafe {
+            match old_term {
+                Some(value) => std::env::set_var("TERM", value),
+                None => std::env::remove_var("TERM"),
+            }
+            match old_colorterm {
+                Some(value) => std::env::set_var("COLORTERM", value),
+                None => std::env::remove_var("COLORTERM"),
+            }
+            match old_terminfo {
+                Some(value) => std::env::set_var("TERMINFO", value),
+                None => std::env::remove_var("TERMINFO"),
+            }
+        }
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
