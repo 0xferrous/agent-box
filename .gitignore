@@ -3,3 +3,5 @@ demo.gif
 result
 .direnv/
 .env
+.claude/
+.playwright-mcp/

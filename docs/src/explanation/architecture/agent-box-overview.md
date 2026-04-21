@@ -4,7 +4,7 @@ Agent-box orchestrates safe, disposable execution environments for autonomous co
 
 ## Core responsibilities
 
-- Discover and resolve repositories under `base_repo_dir`
+- Discover and resolve repositories (by default from any location on the filesystem; optionally restricted to `base_repo_dir`)
 - Create workspaces (JJ or Git)
 - Build container runtime config from layered settings + profiles + CLI overrides
 - Spawn containers with deterministic mounts, env, networking, and entrypoint

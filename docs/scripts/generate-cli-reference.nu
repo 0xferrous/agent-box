@@ -14,7 +14,9 @@ def run-cmd [cmd: string] {
       }
     }
   }
-  $res.stdout | str trim --right
+  # Filter out tracing log lines (e.g., from agent-portal-host) that
+  # leak into stdout before the help text.
+  $res.stdout | lines | where { |line| not ($line =~ '^\d{4}-\d{2}-\d{2}T.*\s+(INFO|WARN|ERROR|DEBUG|TRACE)\s+') } | str join (char nl) | str trim --right
 }
 
 def render-file [output_file: string, title: string, specs: list<record<name: string, cmd: string>>] {
@@ -62,6 +64,10 @@ let ab_specs = [
   { name: "ab new", cmd: "cargo run -q -p ab -- new --help" }
   { name: "ab spawn", cmd: "cargo run -q -p ab -- spawn --help" }
   { name: "ab info", cmd: "cargo run -q -p ab -- info --help" }
+  { name: "ab dbg", cmd: "cargo run -q -p ab -- dbg --help" }
+  { name: "ab dbg list", cmd: "cargo run -q -p ab -- dbg list --help" }
+  { name: "ab dbg remove", cmd: "cargo run -q -p ab -- dbg remove --help" }
+  { name: "ab dbg validate", cmd: "cargo run -q -p ab -- dbg validate --help" }
 ]
 
 let portal_specs = [

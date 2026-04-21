@@ -8,7 +8,7 @@ You create a workspace and start a containerized session with `ab`.
 
 - `ab` installed
 - Docker or Podman available
-- `~/.agent-box.toml` created with `workspace_dir`, `base_repo_dir`, and `runtime.image`
+- `~/.agent-box.toml` created with `workspace_dir` and `runtime.image` (optionally `base_repo_dir` for shorter workspace paths)
 
 ## Steps
 

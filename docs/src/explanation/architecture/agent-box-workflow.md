@@ -4,9 +4,10 @@ This page explains the runtime flow behind `ab new` and `ab spawn`.
 
 ## Repository/workspace model
 
-- Source repositories are discovered under `base_repo_dir`.
+- Source repositories can be located anywhere on the filesystem. When `base_repo_dir` is at the default (`/`), the full repo path is mirrored inside the workspace directory. Setting `base_repo_dir` to a common ancestor produces shorter workspace paths.
 - Workspaces are created under `workspace_dir`.
 - Workspace mode is either JJ workspace or Git worktree.
+- When running from inside a linked git worktree (e.g., a session workspace), `ab new` and `ab spawn` in session mode resolve to the main repository root, not the worktree itself. `ab spawn --local` preserves the current worktree path.
 
 ## `ab new` flow
 
