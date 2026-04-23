@@ -165,6 +165,7 @@ pub struct ContainerConfig {
     pub ports: Vec<String>,
     pub hosts: Vec<String>,
     pub network: Option<String>,
+    pub dns: Vec<String>,
 }
 
 /// Enum of available container runtimes
@@ -511,6 +512,7 @@ pub fn build_container_config(
         ports: all_ports,
         hosts: all_hosts,
         network,
+        dns: config.runtime.dns.clone(),
     })
 }
 
@@ -1455,6 +1457,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),
@@ -1488,6 +1491,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),
@@ -1531,6 +1535,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),
@@ -1625,6 +1630,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),
@@ -1701,6 +1707,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),
@@ -1800,6 +1807,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),
@@ -1873,6 +1881,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),
@@ -1949,6 +1958,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),

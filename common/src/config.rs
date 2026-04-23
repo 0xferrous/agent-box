@@ -552,6 +552,10 @@ fn default_context_path() -> String {
     "/tmp/context".to_string()
 }
 
+fn default_dns() -> Vec<String> {
+    vec!["1.1.1.1".to_string(), "8.8.8.8".to_string()]
+}
+
 #[derive(Debug, Deserialize, Default, Clone, PartialEq, JsonSchema)]
 pub struct RuntimeConfig {
     #[serde(default = "default_backend")]
@@ -573,6 +577,11 @@ pub struct RuntimeConfig {
     /// Custom host-to-IP mappings added to `/etc/hosts` inside the container (`HOST:IP`)
     #[serde(default)]
     pub hosts: Vec<String>,
+    /// DNS servers to use inside the container (passed as `--dns` to the runtime).
+    /// When set, the runtime generates `/etc/resolv.conf` from these servers
+    /// instead of copying the host's configuration.
+    #[serde(default = "default_dns")]
+    pub dns: Vec<String>,
     #[serde(default)]
     pub skip_mounts: Vec<String>,
 }
@@ -1517,6 +1526,7 @@ mod tests {
                 env_passthrough: vec![],
                 ports: vec![],
                 hosts: vec![],
+                dns: vec![],
                 skip_mounts: vec![],
             },
             context: String::new(),

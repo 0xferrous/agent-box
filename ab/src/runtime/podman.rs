@@ -182,6 +182,7 @@ impl ContainerBackend for PodmanRuntime {
         eprintln!("  Ports: {} mappings", config.ports.len());
         eprintln!("  Hosts: {} entries", config.hosts.len());
         eprintln!("  Network: {:?}", config.network);
+        eprintln!("  DNS: {} servers", config.dns.len());
 
         let mut args = vec![
             "run".to_string(),
@@ -225,6 +226,12 @@ impl ContainerBackend for PodmanRuntime {
         for host in &config.hosts {
             args.push("--add-host".to_string());
             args.push(host.clone());
+        }
+
+        // Add custom DNS servers
+        for dns in &config.dns {
+            args.push("--dns".to_string());
+            args.push(dns.clone());
         }
 
         // Add entrypoint if specified
