@@ -52,6 +52,8 @@ Entry points:
 
 From the repo root, run checks in the flake devshell:
 
+The flake also preconfigures the `0xferrous` Cachix cache via `nixConfig`, so Nix can use it after you accept flake config on first use.
+
 ```bash
 nix develop --command cargo fmt --all
 nix develop --command cargo check --workspace

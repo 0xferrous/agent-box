@@ -1,6 +1,13 @@
 {
   description = "Agent Box - Git repository management tool";
 
+  nixConfig = {
+    extra-substituters = [ "https://0xferrous.cachix.org" ];
+    extra-trusted-public-keys = [
+      "0xferrous.cachix.org-1:p38oLu+8I+EwBW6NCl+ffI8qn+WOtUeRzES/dYNuSUE="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
