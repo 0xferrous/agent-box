@@ -560,6 +560,10 @@ fn default_base_repo_dir() -> PathBuf {
     PathBuf::from("/")
 }
 
+fn default_repo_discovery_dirs() -> Vec<PathBuf> {
+    Vec::new()
+}
+
 #[derive(Debug, Deserialize, Default, Clone, PartialEq, JsonSchema)]
 pub struct RuntimeConfig {
     #[serde(default = "default_backend")]
@@ -596,6 +600,11 @@ pub struct Config {
     #[serde(default = "default_base_repo_dir")]
     #[schemars(default = "default_base_repo_dir")]
     pub base_repo_dir: PathBuf,
+    /// Additional directories to scan when discovering repositories for interactive
+    /// selection and disambiguation. If empty, only base_repo_dir is used.
+    #[serde(default = "default_repo_discovery_dirs")]
+    #[schemars(default = "default_repo_discovery_dirs")]
+    pub repo_discovery_dirs: Vec<PathBuf>,
     /// Default profile name to always apply (if set)
     #[serde(default)]
     pub default_profile: Option<String>,
@@ -836,6 +845,11 @@ pub fn load_config() -> Result<Config> {
         expand_path(&config.workspace_dir).wrap_err("Failed to expand workspace_dir path")?;
     config.base_repo_dir =
         expand_path(&config.base_repo_dir).wrap_err("Failed to expand base_repo_dir path")?;
+    config.repo_discovery_dirs = config
+        .repo_discovery_dirs
+        .iter()
+        .map(|p| expand_path(p).wrap_err("Failed to expand repo_discovery_dirs path"))
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(config)
 }
@@ -1546,6 +1560,7 @@ mod tests {
         Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {

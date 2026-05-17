@@ -23,11 +23,15 @@ pub fn find_git_root() -> Result<PathBuf> {
         .map(|p: &std::path::Path| p.to_path_buf())
 }
 
-/// Prompt user to select from a list of repos
-fn prompt_select_repo(repos: Vec<RepoIdentifier>, prompt: &str) -> Result<RepoIdentifier> {
+/// Prompt user to select from a list of repos using inquire.
+fn prompt_select_repo(
+    config: &Config,
+    repos: Vec<RepoIdentifier>,
+    prompt: &str,
+) -> Result<RepoIdentifier> {
     let options: Vec<String> = repos
         .iter()
-        .map(|r| r.relative_path().display().to_string())
+        .map(|r| r.source_path(config).display().to_string())
         .collect();
 
     let selected = inquire::Select::new(prompt, options)
@@ -36,7 +40,7 @@ fn prompt_select_repo(repos: Vec<RepoIdentifier>, prompt: &str) -> Result<RepoId
 
     repos
         .into_iter()
-        .find(|r| r.relative_path().display().to_string() == selected)
+        .find(|r| r.source_path(config).display().to_string() == selected)
         .ok_or_else(|| eyre::eyre!("Selected repository not found"))
 }
 
@@ -61,9 +65,18 @@ pub fn locate_repo(config: &Config, search: Option<&str>) -> Result<RepoIdentifi
                 Some(s) => format!("Multiple repositories match '{}'. Select one:", s),
                 None => "Select a repository:".to_string(),
             };
-            prompt_select_repo(matches, &prompt)
+            prompt_select_repo(config, matches, &prompt)
         }
     }
+}
+
+/// Pick from all discovered repositories using the same interactive selector as locate_repo.
+pub fn pick_discovered_repo(config: &Config) -> Result<RepoIdentifier> {
+    let repos = RepoIdentifier::discover_repo_ids(config)?;
+    if repos.is_empty() {
+        bail!("No repositories discovered");
+    }
+    prompt_select_repo(config, repos, "Select a repository:")
 }
 
 /// Resolve repo argument to a RepoIdentifier

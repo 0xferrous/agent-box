@@ -1,6 +1,7 @@
 use eyre::{Result, eyre};
 use jj_lib::object_id::ObjectId;
 use jj_lib::repo::Repo;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
@@ -34,20 +35,29 @@ pub struct JjWorkspaceInfo {
 /// against different base directories (git_dir, jj_dir, workspace_dir, etc.)
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RepoIdentifier {
-    /// The relative path from any base directory (e.g., "myproject" or "work/project")
+    /// The relative path from discovery base directory (e.g., "myproject" or "work/project")
     pub relative_path: PathBuf,
+    /// Optional discovery base dir that this repo was found under.
+    /// When present, source_path() resolves against this directory.
+    pub discovery_base_dir: Option<PathBuf>,
 }
 
 impl RepoIdentifier {
     /// Create from a path within base_repo_dir
     pub fn from_repo_path(config: &Config, full_path: &Path) -> Result<Self> {
         let relative_path = calculate_relative_path(&config.base_repo_dir, full_path)?;
-        Ok(Self { relative_path })
+        Ok(Self {
+            relative_path,
+            discovery_base_dir: Some(config.base_repo_dir.clone()),
+        })
     }
 
     /// Get the full path in base_repo_dir (source repo location)
     pub fn source_path(&self, config: &Config) -> PathBuf {
-        config.base_repo_dir.join(&self.relative_path)
+        self.discovery_base_dir
+            .as_ref()
+            .unwrap_or(&config.base_repo_dir)
+            .join(&self.relative_path)
     }
 
     /// Get the full path for a git workspace with given session
@@ -153,18 +163,40 @@ impl RepoIdentifier {
 
             repos.push(Self {
                 relative_path: relative_path.to_path_buf(),
+                discovery_base_dir: Some(base_dir.to_path_buf()),
             });
         }
 
         Ok(repos)
     }
 
-    /// Discover all repositories in the base_repo_dir.
-    /// Returns a vector of RepoIdentifiers for all repositories found (with .git or .jj).
+    /// Discover all repositories in configured discovery directories.
+    /// Returns RepoIdentifiers for all repositories found (with .git or .jj).
     pub fn discover_repo_ids(config: &Config) -> Result<Vec<Self>> {
-        Self::discover_repos_in_dir(&config.base_repo_dir, |path| {
-            path.join(".git").exists() || path.join(".jj").exists()
-        })
+        let discovery_dirs: Vec<&Path> = if config.repo_discovery_dirs.is_empty() {
+            vec![config.base_repo_dir.as_path()]
+        } else {
+            config
+                .repo_discovery_dirs
+                .iter()
+                .map(PathBuf::as_path)
+                .collect()
+        };
+
+        let mut seen = BTreeSet::new();
+        let mut repos = Vec::new();
+
+        for dir in discovery_dirs {
+            for repo in Self::discover_repos_in_dir(dir, |path| {
+                path.join(".git").exists() || path.join(".jj").exists()
+            })? {
+                if seen.insert((repo.discovery_base_dir.clone(), repo.relative_path.clone())) {
+                    repos.push(repo);
+                }
+            }
+        }
+
+        Ok(repos)
     }
 
     /// Get all JJ workspaces for this repository using JJ's workspace tracking
@@ -316,6 +348,7 @@ mod tests {
 
         Config {
             base_repo_dir: PathBuf::from("/home/user/repos"),
+            repo_discovery_dirs: vec![],
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: HashMap::new(),
@@ -351,6 +384,7 @@ mod tests {
         let config = make_test_config();
         let id = RepoIdentifier {
             relative_path: PathBuf::from("work/project"),
+            discovery_base_dir: None,
         };
 
         assert_eq!(
@@ -380,6 +414,7 @@ mod tests {
 
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
+            repo_discovery_dirs: vec![],
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),
@@ -423,6 +458,7 @@ mod tests {
 
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
+            repo_discovery_dirs: vec![],
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),
@@ -466,6 +502,7 @@ mod tests {
 
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
+            repo_discovery_dirs: vec![],
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),
@@ -501,5 +538,89 @@ mod tests {
         // Test when base_repo_dir doesn't exist
         let matches = RepoIdentifier::find_matching(&config, "anything").unwrap();
         assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn test_discover_repo_ids_uses_repo_discovery_dirs() {
+        use crate::config::RuntimeConfig;
+
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab-test-discovery-dirs-{}", std::process::id()));
+        let base_repo_dir = temp_dir.join("base");
+        let discover_dir = temp_dir.join("discover");
+
+        std::fs::create_dir_all(base_repo_dir.join("ignored")).unwrap();
+        std::fs::create_dir_all(discover_dir.join("fr").join("agent-box").join(".git")).unwrap();
+
+        let config = Config {
+            base_repo_dir: base_repo_dir.clone(),
+            repo_discovery_dirs: vec![discover_dir.clone()],
+            workspace_dir: PathBuf::from("/mnt/workspace"),
+            default_profile: None,
+            profiles: std::collections::HashMap::new(),
+            runtime: RuntimeConfig {
+                backend: "podman".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                skip_mounts: vec![],
+                env: Default::default(),
+                env_passthrough: vec![],
+                ports: Default::default(),
+                hosts: Default::default(),
+                dns: Default::default(),
+            },
+            context: String::new(),
+            context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
+        };
+
+        let repos = RepoIdentifier::discover_repo_ids(&config).unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].relative_path(), Path::new("fr/agent-box"));
+
+        std::fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_discover_repo_ids_keeps_duplicates_across_discovery_dirs() {
+        use crate::config::RuntimeConfig;
+
+        let temp_dir =
+            std::env::temp_dir().join(format!("ab-test-discovery-dupes-{}", std::process::id()));
+        let d1 = temp_dir.join("d1");
+        let d2 = temp_dir.join("d2");
+
+        std::fs::create_dir_all(d1.join("fr").join("agent-box").join(".git")).unwrap();
+        std::fs::create_dir_all(d2.join("fr").join("agent-box").join(".git")).unwrap();
+
+        let config = Config {
+            base_repo_dir: temp_dir.join("base"),
+            repo_discovery_dirs: vec![d1.clone(), d2.clone()],
+            workspace_dir: PathBuf::from("/mnt/workspace"),
+            default_profile: None,
+            profiles: std::collections::HashMap::new(),
+            runtime: RuntimeConfig {
+                backend: "podman".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                skip_mounts: vec![],
+                env: Default::default(),
+                env_passthrough: vec![],
+                ports: Default::default(),
+                hosts: Default::default(),
+                dns: Default::default(),
+            },
+            context: String::new(),
+            context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
+        };
+
+        let repos = RepoIdentifier::discover_repo_ids(&config).unwrap();
+        assert_eq!(repos.len(), 2);
+        assert_ne!(repos[0].source_path(&config), repos[1].source_path(&config));
+
+        std::fs::remove_dir_all(&temp_dir).ok();
     }
 }
