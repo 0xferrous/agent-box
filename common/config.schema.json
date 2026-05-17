@@ -67,6 +67,14 @@
         "$ref": "#/$defs/ProfileConfig"
       }
     },
+    "repo_discovery_dirs": {
+      "description": "Additional directories to scan when discovering repositories for interactive\nselection and disambiguation. If empty, only base_repo_dir is used.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string"
+      }
+    },
     "runtime": {
       "$ref": "#/$defs/RuntimeConfig"
     },
@@ -350,6 +358,17 @@
         "backend": {
           "type": "string",
           "default": "podman"
+        },
+        "dns": {
+          "description": "DNS servers to use inside the container (passed as `--dns` to the runtime).\nWhen set, the runtime generates `/etc/resolv.conf` from these servers\ninstead of copying the host's configuration.",
+          "type": "array",
+          "default": [
+            "1.1.1.1",
+            "8.8.8.8"
+          ],
+          "items": {
+            "type": "string"
+          }
         },
         "entrypoint": {
           "type": [

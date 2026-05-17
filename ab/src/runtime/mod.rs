@@ -1446,6 +1446,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: agent_box_common::config::RuntimeConfig {
@@ -1480,6 +1481,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: agent_box_common::config::RuntimeConfig {
@@ -1524,6 +1526,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1619,6 +1622,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1696,6 +1700,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1796,6 +1801,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1870,6 +1876,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1947,6 +1954,7 @@ mod tests {
         let config = Config {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
+            repo_discovery_dirs: vec![],
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {

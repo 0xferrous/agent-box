@@ -3,8 +3,10 @@ use agent_box_common::config::{
     validate_config_or_err,
 };
 use agent_box_common::display::info;
-use agent_box_common::path::WorkspaceType;
-use agent_box_common::repo::{locate_repo, new_workspace, remove_repo, resolve_repo_id};
+use agent_box_common::path::{WorkspaceType, expand_path};
+use agent_box_common::repo::{
+    locate_repo, new_workspace, pick_discovered_repo, remove_repo, resolve_repo_id,
+};
 use clap::{Parser, Subcommand};
 use eyre::Result;
 use std::path::PathBuf;
@@ -49,6 +51,11 @@ fn maybe_start_managed_portal(
 #[command(name = "ab")]
 #[command(about = "Agent Box - Git repository management tool")]
 struct Cli {
+    /// Additional directories to scan for repository discovery.
+    /// Can be specified multiple times.
+    #[arg(long = "repo-discovery-dir", value_name = "PATH")]
+    repo_discovery_dir: Vec<PathBuf>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -166,6 +173,8 @@ enum DbgCommands {
     },
     /// Validate configuration (profiles, extends, default_profile)
     Validate,
+    /// Pick from discovered repositories via interactive selector (fzf/inquire)
+    Pick,
     /// Show resolved/merged configuration from profiles
     Resolve {
         /// Profiles to apply (can be specified multiple times).
@@ -203,7 +212,16 @@ fn main() {
 
 fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
-    let config = load_config()?;
+    let mut config = load_config()?;
+
+    if !cli.repo_discovery_dir.is_empty() {
+        let extra_dirs = cli
+            .repo_discovery_dir
+            .iter()
+            .map(|p| expand_path(p))
+            .collect::<Result<Vec<_>>>()?;
+        config.repo_discovery_dirs.extend(extra_dirs);
+    }
 
     match cli.command {
         Commands::Info => {
@@ -417,6 +435,10 @@ fn run() -> eyre::Result<()> {
                     );
                     std::process::exit(1);
                 }
+            }
+            DbgCommands::Pick => {
+                let repo_id = pick_discovered_repo(&config)?;
+                println!("{}", repo_id.relative_path().display());
             }
             DbgCommands::Resolve { profile } => {
                 // Validate config first
