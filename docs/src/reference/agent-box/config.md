@@ -18,7 +18,7 @@ Merge behavior:
 ## Root keys
 
 - `workspace_dir` (path): base directory for generated workspaces
-- `base_repo_dir` (path): base directory for source repositories
+- `base_repo_dir` (path, default `/`): base directory for source repositories
 - `default_profile` (string|null): profile automatically applied to `ab spawn`
 - `profiles` (table): named profile definitions
 - `runtime` (table): runtime/backend settings

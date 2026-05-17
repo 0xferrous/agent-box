@@ -4,7 +4,8 @@
   "type": "object",
   "properties": {
     "base_repo_dir": {
-      "type": "string"
+      "type": "string",
+      "default": "/"
     },
     "context": {
       "description": "Root-level context",
@@ -74,8 +75,7 @@
     }
   },
   "required": [
-    "workspace_dir",
-    "base_repo_dir"
+    "workspace_dir"
   ],
   "$defs": {
     "ClipboardConfig": {

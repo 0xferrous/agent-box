@@ -556,6 +556,10 @@ fn default_dns() -> Vec<String> {
     vec!["1.1.1.1".to_string(), "8.8.8.8".to_string()]
 }
 
+fn default_base_repo_dir() -> PathBuf {
+    PathBuf::from("/")
+}
+
 #[derive(Debug, Deserialize, Default, Clone, PartialEq, JsonSchema)]
 pub struct RuntimeConfig {
     #[serde(default = "default_backend")]
@@ -589,6 +593,8 @@ pub struct RuntimeConfig {
 #[derive(Debug, Deserialize, PartialEq, JsonSchema)]
 pub struct Config {
     pub workspace_dir: PathBuf,
+    #[serde(default = "default_base_repo_dir")]
+    #[schemars(default = "default_base_repo_dir")]
     pub base_repo_dir: PathBuf,
     /// Default profile name to always apply (if set)
     #[serde(default)]
@@ -1043,6 +1049,31 @@ mod tests {
                 config.runtime.mounts.ro.home_relative,
                 vec!["~/.config/git"]
             );
+
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn test_base_repo_dir_defaults_to_root() {
+        Jail::expect_with(|jail| {
+            jail.create_file(
+                "global.toml",
+                r#"
+                workspace_dir = "/workspaces"
+
+                [runtime]
+                backend = "docker"
+                image = "test:latest"
+                "#,
+            )?;
+
+            let global_path = jail.directory().join("global.toml");
+            let figment = build_figment(&global_path, None);
+            let config: Config = figment.extract()?;
+
+            assert_eq!(config.workspace_dir, PathBuf::from("/workspaces"));
+            assert_eq!(config.base_repo_dir, PathBuf::from("/"));
 
             Ok(())
         });
