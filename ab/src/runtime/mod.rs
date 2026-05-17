@@ -1447,6 +1447,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: agent_box_common::config::RuntimeConfig {
@@ -1482,6 +1483,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: agent_box_common::config::RuntimeConfig {
@@ -1527,6 +1529,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1623,6 +1626,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1701,6 +1705,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1802,6 +1807,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1877,6 +1883,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
@@ -1955,6 +1962,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {

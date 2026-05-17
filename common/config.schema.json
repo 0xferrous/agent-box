@@ -75,6 +75,13 @@
         "type": "string"
       }
     },
+    "repo_discovery_timeout_secs": {
+      "description": "Timeout (seconds) for repository discovery scan per configured discovery root.",
+      "type": "integer",
+      "format": "uint64",
+      "default": 5,
+      "minimum": 0
+    },
     "runtime": {
       "$ref": "#/$defs/RuntimeConfig"
     },
