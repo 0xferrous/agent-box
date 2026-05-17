@@ -128,12 +128,92 @@ pub fn resolve_repo_id(config: &Config, repo_name: Option<&str>) -> Result<RepoI
     let repo_id = match repo_name {
         Some(name) => locate_repo(config, Some(name)),
         None => {
-            let git_root = find_git_root(true)?;
-            RepoIdentifier::from_repo_path(config, &git_root)
+            // Prefer git root resolution (handles linked worktrees), then fall
+            // back to jj workspace root for jj-only repos.
+            let repo_root = find_git_root(true).or_else(|_| find_jj_workspace_root(true))?;
+            RepoIdentifier::from_repo_path(config, &repo_root)
         }
     };
     println!("debug: {repo_id:?}");
     repo_id
+}
+
+/// Find enclosing jj workspace root from current directory.
+///
+/// When `resolve_to_original_root` is true:
+/// - If `.jj/repo` is a file, resolve to the original workspace root.
+///
+/// When false:
+/// - Return the current workspace root (the ancestor containing `.jj`) even
+///   if it points to an original root.
+fn find_jj_workspace_root(resolve_to_original_root: bool) -> Result<PathBuf> {
+    let current = std::env::current_dir().wrap_err("Failed to get current working directory")?;
+    find_jj_workspace_root_from(&current, resolve_to_original_root)
+}
+
+fn find_jj_workspace_root_from(path: &Path, resolve_to_original_root: bool) -> Result<PathBuf> {
+    for ancestor in path.ancestors() {
+        let jj_dir = ancestor.join(".jj");
+        if !jj_dir.is_dir() {
+            continue;
+        }
+
+        let repo_entry = jj_dir.join("repo");
+
+        // Original workspace: `.jj/repo` is a directory
+        if repo_entry.is_dir() {
+            return ancestor.canonicalize().wrap_err_with(|| {
+                format!(
+                    "Failed to canonicalize jj workspace root: {}",
+                    ancestor.display()
+                )
+            });
+        }
+
+        // Linked workspace: `.jj/repo` is a file that points to
+        // `<original_root>/.jj/repo`.
+        if repo_entry.is_file() {
+            if !resolve_to_original_root {
+                return ancestor.canonicalize().wrap_err_with(|| {
+                    format!(
+                        "Failed to canonicalize jj workspace root: {}",
+                        ancestor.display()
+                    )
+                });
+            }
+
+            let raw = std::fs::read_to_string(&repo_entry)
+                .wrap_err_with(|| format!("Failed to read {}", repo_entry.display()))?;
+            let target = PathBuf::from(raw.trim());
+            let target_abs = if target.is_absolute() {
+                target
+            } else {
+                jj_dir.join(target)
+            };
+
+            let original_root = target_abs
+                .parent()
+                .and_then(|p| p.parent())
+                .ok_or_else(|| {
+                    eyre!(
+                        "Malformed jj repo pointer in {}: {}",
+                        repo_entry.display(),
+                        target_abs.display()
+                    )
+                })?;
+
+            return original_root.canonicalize().wrap_err_with(|| {
+                format!(
+                    "Failed to canonicalize resolved jj workspace root: {}",
+                    original_root.display()
+                )
+            });
+        }
+
+        // `.jj` exists but no recognizable `repo` entry; keep walking.
+    }
+
+    bail!("Failed to discover git repository or jj workspace from current directory")
 }
 
 /// Create a new workspace (git worktree or jj workspace)
@@ -370,4 +450,123 @@ pub fn remove_repo(config: &Config, repo_id: &RepoIdentifier, dry_run: bool) -> 
     println!("\n✓ All workspaces and repositories removed successfully");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::RuntimeConfig;
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    fn cwd_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn make_test_config(base_repo_dir: PathBuf) -> Config {
+        Config {
+            workspace_dir: PathBuf::from("/workspaces"),
+            base_repo_dir,
+            repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 5,
+            default_profile: None,
+            profiles: HashMap::new(),
+            runtime: RuntimeConfig {
+                backend: "podman".to_string(),
+                image: "test:latest".to_string(),
+                entrypoint: None,
+                mounts: Default::default(),
+                env: vec![],
+                env_passthrough: vec![],
+                ports: vec![],
+                hosts: vec![],
+                dns: vec![],
+                skip_mounts: vec![],
+            },
+            context: String::new(),
+            context_path: "/tmp/context".to_string(),
+            portal: crate::portal::PortalConfig::default(),
+        }
+    }
+
+    #[test]
+    fn test_find_jj_workspace_root_from_nested_dir() {
+        let _guard = cwd_test_lock().lock().unwrap();
+        let temp = std::env::temp_dir().join(format!("ab-test-jj-root-{}", std::process::id()));
+        let repo = temp.join("repos").join("fr").join("agent-box");
+        let nested = repo.join("deep").join("child");
+        std::fs::create_dir_all(repo.join(".jj").join("repo")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let old_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&nested).unwrap();
+
+        let found = find_jj_workspace_root(true).unwrap();
+        assert_eq!(found, repo.canonicalize().unwrap());
+
+        std::env::set_current_dir(old_cwd).unwrap();
+        std::fs::remove_dir_all(&temp).ok();
+    }
+
+    #[test]
+    fn test_resolve_repo_id_falls_back_to_jj_workspace_root() {
+        let _guard = cwd_test_lock().lock().unwrap();
+        let temp = std::env::temp_dir().join(format!(
+            "ab-test-resolve-jj-fallback-{}",
+            std::process::id()
+        ));
+        let base_repo_dir = temp.join("repos");
+        let repo = base_repo_dir.join("fr").join("agent-box");
+        let nested = repo.join("subdir");
+
+        std::fs::create_dir_all(repo.join(".jj").join("repo")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let config = make_test_config(base_repo_dir.clone());
+
+        let old_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&nested).unwrap();
+
+        let repo_id = resolve_repo_id(&config, None).unwrap();
+
+        std::env::set_current_dir(old_cwd).unwrap();
+        std::fs::remove_dir_all(&temp).ok();
+
+        assert_eq!(repo_id.relative_path(), Path::new("fr/agent-box"));
+    }
+
+    #[test]
+    fn test_find_jj_workspace_root_from_linked_workspace_repo_file() {
+        let _guard = cwd_test_lock().lock().unwrap();
+        let temp = std::env::temp_dir().join(format!("ab-test-jj-linked-{}", std::process::id()));
+
+        let original_root = temp.join("repos").join("fr").join("agent-box");
+        let linked_ws = temp.join("ws").join("agent-box-ws");
+        let nested = linked_ws.join("nested");
+
+        std::fs::create_dir_all(original_root.join(".jj").join("repo")).unwrap();
+        std::fs::create_dir_all(linked_ws.join(".jj")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        // Simulate jj linked workspace pointer: .jj/repo file pointing to
+        // <original_root>/.jj/repo (relative path).
+        std::fs::write(
+            linked_ws.join(".jj").join("repo"),
+            original_root.join(".jj").join("repo").display().to_string(),
+        )
+        .unwrap();
+
+        let old_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&nested).unwrap();
+
+        let found = find_jj_workspace_root(true).unwrap();
+        assert_eq!(found, original_root.canonicalize().unwrap());
+
+        let found_current = find_jj_workspace_root_from(&nested, false).unwrap();
+        assert_eq!(found_current, linked_ws.canonicalize().unwrap());
+
+        std::env::set_current_dir(old_cwd).unwrap();
+        std::fs::remove_dir_all(&temp).ok();
+    }
 }
