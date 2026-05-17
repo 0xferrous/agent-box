@@ -3,6 +3,7 @@ use jj_lib::object_id::ObjectId;
 use jj_lib::repo::Repo;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::config::Config;
 
@@ -112,7 +113,12 @@ impl RepoIdentifier {
 
     /// Helper function to discover repositories in a directory based on a filter predicate
     /// Stops descending into directories that are already repos.
-    fn discover_repos_in_dir<F>(base_dir: &Path, is_repo: F) -> Result<Vec<Self>>
+    fn discover_repos_in_dir<F>(
+        base_dir: &Path,
+        is_repo: F,
+        timeout: Duration,
+        started_at: Instant,
+    ) -> Result<Vec<Self>>
     where
         F: Fn(&Path) -> bool + Copy,
     {
@@ -150,6 +156,13 @@ impl RepoIdentifier {
             });
 
         for entry in walker.filter_map(|e| e.ok()) {
+            if started_at.elapsed() > timeout {
+                return Err(eyre!(
+                    "Repository discovery timed out after {}s while scanning {}. Narrow repo_discovery_dirs or increase repo_discovery_timeout_secs in your config.",
+                    timeout.as_secs(),
+                    base_dir.display()
+                ));
+            }
             let path = entry.path();
 
             if !path.is_dir() || !is_repo(path) {
@@ -185,13 +198,47 @@ impl RepoIdentifier {
 
         let mut seen = BTreeSet::new();
         let mut repos = Vec::new();
+        let timeout = Duration::from_secs(config.repo_discovery_timeout_secs);
+        let started_at = Instant::now();
+        let mut per_dir_timings: Vec<(PathBuf, Duration)> = Vec::new();
 
         for dir in discovery_dirs {
-            for repo in Self::discover_repos_in_dir(dir, |path| {
-                path.join(".git").exists() || path.join(".jj").exists()
-            })? {
-                if seen.insert((repo.discovery_base_dir.clone(), repo.relative_path.clone())) {
-                    repos.push(repo);
+            let dir_started_at = Instant::now();
+            let discovered = Self::discover_repos_in_dir(
+                dir,
+                |path| path.join(".git").exists() || path.join(".jj").exists(),
+                timeout,
+                started_at,
+            );
+
+            match discovered {
+                Ok(found) => {
+                    per_dir_timings.push((dir.to_path_buf(), dir_started_at.elapsed()));
+                    for repo in found {
+                        if seen
+                            .insert((repo.discovery_base_dir.clone(), repo.relative_path.clone()))
+                        {
+                            repos.push(repo);
+                        }
+                    }
+                }
+                Err(e) => {
+                    let current_elapsed = dir_started_at.elapsed();
+                    let mut timing_parts: Vec<String> = per_dir_timings
+                        .iter()
+                        .map(|(p, d)| format!("{}: {}ms", p.display(), d.as_millis()))
+                        .collect();
+                    timing_parts.push(format!(
+                        "{}: {}ms (timed out)",
+                        dir.display(),
+                        current_elapsed.as_millis()
+                    ));
+
+                    return Err(eyre!(
+                        "{}\nPer-directory scan timings: {}",
+                        e,
+                        timing_parts.join(", ")
+                    ));
                 }
             }
         }
@@ -349,6 +396,7 @@ mod tests {
         Config {
             base_repo_dir: PathBuf::from("/home/user/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: HashMap::new(),
@@ -415,6 +463,7 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),
@@ -459,6 +508,7 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),
@@ -503,6 +553,7 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),
@@ -555,6 +606,7 @@ mod tests {
         let config = Config {
             base_repo_dir: base_repo_dir.clone(),
             repo_discovery_dirs: vec![discover_dir.clone()],
+            repo_discovery_timeout_secs: 30,
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),
@@ -597,6 +649,7 @@ mod tests {
         let config = Config {
             base_repo_dir: temp_dir.join("base"),
             repo_discovery_dirs: vec![d1.clone(), d2.clone()],
+            repo_discovery_timeout_secs: 30,
             workspace_dir: PathBuf::from("/mnt/workspace"),
             default_profile: None,
             profiles: std::collections::HashMap::new(),

@@ -20,6 +20,7 @@ Merge behavior:
 - `workspace_dir` (path): base directory for generated workspaces
 - `base_repo_dir` (path, default `/`): base directory for source repositories
 - `repo_discovery_dirs` (array of paths, default `[]`): extra roots searched for repo discovery in interactive selection/disambiguation (falls back to `base_repo_dir` when empty)
+- `repo_discovery_timeout_secs` (integer, default `5`): max total scan time for repository discovery before discovery aborts with timeout
 - `default_profile` (string|null): profile automatically applied to `ab spawn`
 - `profiles` (table): named profile definitions
 - `runtime` (table): runtime/backend settings

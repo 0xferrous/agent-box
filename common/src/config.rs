@@ -564,6 +564,10 @@ fn default_repo_discovery_dirs() -> Vec<PathBuf> {
     Vec::new()
 }
 
+fn default_repo_discovery_timeout_secs() -> u64 {
+    5
+}
+
 #[derive(Debug, Deserialize, Default, Clone, PartialEq, JsonSchema)]
 pub struct RuntimeConfig {
     #[serde(default = "default_backend")]
@@ -605,6 +609,10 @@ pub struct Config {
     #[serde(default = "default_repo_discovery_dirs")]
     #[schemars(default = "default_repo_discovery_dirs")]
     pub repo_discovery_dirs: Vec<PathBuf>,
+    /// Timeout (seconds) for repository discovery scan per configured discovery root.
+    #[serde(default = "default_repo_discovery_timeout_secs")]
+    #[schemars(default = "default_repo_discovery_timeout_secs")]
+    pub repo_discovery_timeout_secs: u64,
     /// Default profile name to always apply (if set)
     #[serde(default)]
     pub default_profile: Option<String>,
@@ -1561,6 +1569,7 @@ mod tests {
             workspace_dir: PathBuf::from("/workspaces"),
             base_repo_dir: PathBuf::from("/repos"),
             repo_discovery_dirs: vec![],
+            repo_discovery_timeout_secs: 30,
             default_profile: None,
             profiles: HashMap::new(),
             runtime: RuntimeConfig {
