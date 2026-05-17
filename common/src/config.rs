@@ -837,7 +837,7 @@ pub fn load_config() -> Result<Config> {
     let global_config_path = PathBuf::from(&home).join(".agent-box.toml");
 
     // Find repo-local config if present (silently ignore if not in a git repo)
-    let repo_config_path = find_git_root()
+    let repo_config_path = find_git_root(false)
         .ok()
         .map(|root| root.join(".agent-box.toml"));
 

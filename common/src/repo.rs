@@ -1,26 +1,68 @@
-use eyre::{OptionExt, Result, WrapErr, bail};
-use std::path::PathBuf;
+use eyre::{OptionExt, Result, WrapErr, bail, eyre};
+use gix::repository::Kind;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::path::RepoIdentifier;
 use crate::path::path_to_str;
 
-/// Find the git root directory by traversing up from the current directory
-pub fn find_git_root() -> Result<PathBuf> {
+/// Find the git root directory from current directory.
+/// Set `resolve_linked_worktree_to_main_repo=true` to resolve linked worktrees
+/// to the main repository root.
+pub fn find_git_root(resolve_linked_worktree_to_main_repo: bool) -> Result<PathBuf> {
     let current_dir =
         std::env::current_dir().wrap_err("Failed to get current working directory")?;
+    find_git_root_from(&current_dir, resolve_linked_worktree_to_main_repo)
+}
 
-    let repo = gix::discover(&current_dir).wrap_err_with(|| {
-        format!(
-            "Failed to discover git repository in {}",
-            current_dir.display()
-        )
-    })?;
+/// Find git root from an arbitrary path.
+/// When `resolve_linked_worktree_to_main_repo` is true, linked worktrees are
+/// resolved to the main repository root via common_dir.
+pub fn find_git_root_from(
+    path: &Path,
+    resolve_linked_worktree_to_main_repo: bool,
+) -> Result<PathBuf> {
+    let repo = gix::discover(path)
+        .wrap_err_with(|| format!("Failed to discover git repository in {}", path.display()))?;
 
-    // Get the work tree path
-    repo.workdir()
-        .ok_or_eyre("Cannot work with a bare repository")
-        .map(|p: &std::path::Path| p.to_path_buf())
+    let root = match repo.kind() {
+        Kind::WorkTree { is_linked: true } if resolve_linked_worktree_to_main_repo => {
+            let common = repo.common_dir().canonicalize().wrap_err_with(|| {
+                format!(
+                    "Failed to canonicalize common_dir: {}",
+                    repo.common_dir().display()
+                )
+            })?;
+            let main_repo = gix::open(&common).wrap_err_with(|| {
+                format!(
+                    "Failed to open main repo from common_dir: {}",
+                    common.display()
+                )
+            })?;
+            main_repo
+                .workdir()
+                .ok_or_else(|| {
+                    eyre!(
+                        "Linked worktree's main repository at {} is bare and has no working directory",
+                        common.display()
+                    )
+                })
+                .map(|p| p.to_path_buf())?
+        }
+        Kind::Bare => {
+            bail!(
+                "Bare repository at {} has no working directory",
+                repo.git_dir().display()
+            )
+        }
+        _ => repo
+            .workdir()
+            .ok_or_eyre("Repository has no working directory")
+            .map(|p| p.to_path_buf())?,
+    };
+
+    root.canonicalize()
+        .wrap_err_with(|| format!("Failed to canonicalize repo root: {}", root.display()))
 }
 
 /// Prompt user to select from a list of repos using inquire.
@@ -86,7 +128,7 @@ pub fn resolve_repo_id(config: &Config, repo_name: Option<&str>) -> Result<RepoI
     let repo_id = match repo_name {
         Some(name) => locate_repo(config, Some(name)),
         None => {
-            let git_root = find_git_root()?;
+            let git_root = find_git_root(true)?;
             RepoIdentifier::from_repo_path(config, &git_root)
         }
     };

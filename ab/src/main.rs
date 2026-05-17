@@ -279,7 +279,7 @@ fn run() -> eyre::Result<()> {
                 // Otherwise, use the current directory directly.
                 // No base_repo_dir lookup is required.
                 let cwd = std::env::current_dir()?;
-                let path = agent_box_common::repo::find_git_root().unwrap_or(cwd);
+                let path = agent_box_common::repo::find_git_root(false).unwrap_or(cwd);
                 (path.clone(), path)
             } else {
                 // In session mode, we need a valid repo_id in base_repo_dir
